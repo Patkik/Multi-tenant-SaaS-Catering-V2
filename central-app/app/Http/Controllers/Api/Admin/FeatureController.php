@@ -20,6 +20,15 @@ class FeatureController extends Controller
         ]);
     }
 
+    public function show(Feature $feature): JsonResponse
+    {
+        Gate::authorize('admin.features.read');
+
+        return response()->json([
+            'data' => $feature,
+        ]);
+    }
+
     public function store(StoreFeatureRequest $request): JsonResponse
     {
         Gate::authorize('admin.features.write');

@@ -47,6 +47,38 @@ class Tenant extends Model
         return $this->hasMany(FeatureOverride::class);
     }
 
+    /**
+     * @return HasMany<RoleTemplateApplication, $this>
+     */
+    public function roleTemplateApplications(): HasMany
+    {
+        return $this->hasMany(RoleTemplateApplication::class);
+    }
+
+    /**
+     * @return HasMany<TenantContact, $this>
+     */
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(TenantContact::class);
+    }
+
+    /**
+     * @return HasMany<UsageSnapshot, $this>
+     */
+    public function usageSnapshots(): HasMany
+    {
+        return $this->hasMany(UsageSnapshot::class);
+    }
+
+    /**
+     * @return HasMany<RBACChangeAudit, $this>
+     */
+    public function rbacAudits(): HasMany
+    {
+        return $this->hasMany(RBACChangeAudit::class);
+    }
+
     public function hasPlanEntitlement(string $requiredPlan): bool
     {
         $entitlements = $this->plan_entitlements ?? [];

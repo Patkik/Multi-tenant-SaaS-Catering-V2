@@ -2,12 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ApplyRoleTemplateToTenantJob;
 use App\Models\Feature;
 use App\Models\RoleTemplate;
+use App\Models\RoleTemplateApplication;
 use App\Models\RoleTemplateFeature;
 use App\Models\RoleTemplatePermission;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AdminRoleTemplateApiTest extends TestCase
@@ -223,20 +226,126 @@ class AdminRoleTemplateApiTest extends TestCase
         ]);
     }
 
-    public function test_apply_endpoint_returns_not_implemented_payload(): void
+    public function test_apply_endpoint_returns_accepted_and_queues_application_job(): void
     {
+        Queue::fake();
+
         $tenant = Tenant::factory()->create();
         $roleTemplate = RoleTemplate::factory()->create();
 
         $response = $this->withHeaders([
             'X-Central-Admin-Key' => self::ADMIN_TOKEN,
-        ])->postJson('/api/admin/tenants/'.$tenant->id.'/role-templates/'.$roleTemplate->id.'/apply');
+        ])->postJson('/api/admin/tenants/'.$tenant->id.'/role-templates/'.$roleTemplate->id.'/apply', [
+            'strategy' => 'merge',
+            'requested_by_admin' => 'ops-admin@central.test',
+        ]);
+
+        $applicationId = (string) $response->json('data.id');
 
         $response
-            ->assertStatus(501)
-            ->assertJsonPath('status', 'not_implemented')
-            ->assertJsonPath('tenant_id', $tenant->id)
-            ->assertJsonPath('role_template_id', $roleTemplate->id);
+            ->assertAccepted()
+            ->assertJsonPath('data.tenant_id', $tenant->id)
+            ->assertJsonPath('data.role_template_id', $roleTemplate->id)
+            ->assertJsonPath('data.strategy', 'merge')
+            ->assertJsonPath('data.status', RoleTemplateApplication::STATUS_QUEUED)
+            ->assertJsonPath('data.requested_by_admin', 'ops-admin@central.test');
+
+        $this->assertDatabaseHas('role_template_applications', [
+            'id' => $applicationId,
+            'tenant_id' => $tenant->id,
+            'role_template_id' => $roleTemplate->id,
+            'status' => RoleTemplateApplication::STATUS_QUEUED,
+            'strategy' => 'merge',
+        ]);
+
+        Queue::assertPushed(ApplyRoleTemplateToTenantJob::class, function (ApplyRoleTemplateToTenantJob $job) use ($applicationId): bool {
+            return $job->roleTemplateApplicationId === $applicationId;
+        });
+    }
+
+    public function test_apply_endpoint_is_idempotent_when_idempotency_key_is_replayed(): void
+    {
+        Queue::fake();
+
+        $tenant = Tenant::factory()->create();
+        $roleTemplate = RoleTemplate::factory()->create();
+        $idempotencyKey = 'apply-template-key-001';
+
+        $firstResponse = $this->withHeaders([
+            'X-Central-Admin-Key' => self::ADMIN_TOKEN,
+        ])->postJson('/api/admin/tenants/'.$tenant->id.'/role-templates/'.$roleTemplate->id.'/apply', [
+            'strategy' => 'replace',
+            'idempotency_key' => $idempotencyKey,
+            'requested_by_admin' => 'idempotent-admin@central.test',
+        ]);
+
+        $secondResponse = $this->withHeaders([
+            'X-Central-Admin-Key' => self::ADMIN_TOKEN,
+        ])->postJson('/api/admin/tenants/'.$tenant->id.'/role-templates/'.$roleTemplate->id.'/apply', [
+            'strategy' => 'replace',
+            'idempotency_key' => $idempotencyKey,
+            'requested_by_admin' => 'different-admin@central.test',
+        ]);
+
+        $firstResponse->assertAccepted();
+        $secondResponse->assertAccepted();
+
+        $firstApplicationId = (string) $firstResponse->json('data.id');
+        $secondApplicationId = (string) $secondResponse->json('data.id');
+
+        $this->assertSame($firstApplicationId, $secondApplicationId);
+        $this->assertSame(1, RoleTemplateApplication::query()->where('idempotency_key', $idempotencyKey)->count());
+
+        Queue::assertPushed(ApplyRoleTemplateToTenantJob::class, 1);
+    }
+
+    public function test_apply_endpoint_scopes_idempotency_key_by_target_context(): void
+    {
+        Queue::fake();
+
+        $idempotencyKey = 'apply-template-key-context-scope';
+
+        $tenantA = Tenant::factory()->create();
+        $tenantB = Tenant::factory()->create();
+        $templateA = RoleTemplate::factory()->create();
+        $templateB = RoleTemplate::factory()->create();
+
+        $firstResponse = $this->withHeaders([
+            'X-Central-Admin-Key' => self::ADMIN_TOKEN,
+        ])->postJson('/api/admin/tenants/'.$tenantA->id.'/role-templates/'.$templateA->id.'/apply', [
+            'strategy' => 'merge',
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $differentTenantResponse = $this->withHeaders([
+            'X-Central-Admin-Key' => self::ADMIN_TOKEN,
+        ])->postJson('/api/admin/tenants/'.$tenantB->id.'/role-templates/'.$templateA->id.'/apply', [
+            'strategy' => 'merge',
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $differentTemplateResponse = $this->withHeaders([
+            'X-Central-Admin-Key' => self::ADMIN_TOKEN,
+        ])->postJson('/api/admin/tenants/'.$tenantA->id.'/role-templates/'.$templateB->id.'/apply', [
+            'strategy' => 'merge',
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $firstResponse->assertAccepted();
+        $differentTenantResponse->assertAccepted();
+        $differentTemplateResponse->assertAccepted();
+
+        $firstApplicationId = (string) $firstResponse->json('data.id');
+        $differentTenantApplicationId = (string) $differentTenantResponse->json('data.id');
+        $differentTemplateApplicationId = (string) $differentTemplateResponse->json('data.id');
+
+        $this->assertNotSame($firstApplicationId, $differentTenantApplicationId);
+        $this->assertNotSame($firstApplicationId, $differentTemplateApplicationId);
+        $this->assertNotSame($differentTenantApplicationId, $differentTemplateApplicationId);
+
+        $this->assertSame(3, RoleTemplateApplication::query()->where('idempotency_key', $idempotencyKey)->count());
+
+        Queue::assertPushed(ApplyRoleTemplateToTenantJob::class, 3);
     }
 
     public function test_create_rejects_role_name_longer_than_100_characters(): void

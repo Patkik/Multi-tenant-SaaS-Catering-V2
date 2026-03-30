@@ -51,4 +51,12 @@ class RoleTemplate extends Model
     {
         return $this->hasMany(RoleTemplateFeature::class);
     }
+
+    /**
+     * @return HasMany<RoleTemplateApplication, $this>
+     */
+    public function applications(): HasMany
+    {
+        return $this->hasMany(RoleTemplateApplication::class);
+    }
 }

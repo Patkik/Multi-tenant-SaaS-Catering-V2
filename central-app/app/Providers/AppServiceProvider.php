@@ -50,8 +50,14 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('admin.features.write', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
         Gate::define('admin.tenants.create', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
         Gate::define('admin.tenants.read-effective-features', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.tenants.monitoring', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.tenants.overrides.read', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.tenants.overrides.write', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.tenants.contacts.read', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.tenants.contacts.write', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
         Gate::define('admin.role-templates.read', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
         Gate::define('admin.role-templates.write', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
         Gate::define('admin.role-templates.apply', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.audit.rbac.read', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
     }
 }

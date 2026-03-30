@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-03-31",
+  "source_files": [
+    "CENTRAL_APP_RBAC_ENHANCEMENT_SPEC.md",
+    "documentation/central-rbac-enhancement.md",
+    "central-app/routes/api.php",
+    "central-app/app/**",
+    "central-app/database/**",
+    "central-app/tests/**"
+  ],
+  "implemented_core": [
+    "Feature and FeatureOverride models + migrations",
+    "Feature precedence logic (active override -> plan entitlement -> default)",
+    "Feature list/create/update admin endpoints",
+    "RoleTemplate, RoleTemplatePermission, RoleTemplateFeature models + migrations",
+    "Role template list/create/update admin endpoints",
+    "Role template apply queue API with idempotency key",
+    "RoleTemplateApplication persistence + async job status transitions",
+    "Tenant monitoring endpoint baseline payload",
+    "Central admin token middleware and throttle",
+    "Feature, role-template, monitoring, and provisioning tests"
+  ],
+  "missing_now": [
+    "TenantAdminContact domain/API/tests",
+    "UsageSnapshot domain/API/tests",
+    "RBACChangeAudit domain/API/tests",
+    "RBAC audit immutability (DB trigger + model immutability)",
+    "Feature overrides CRUD endpoints (list/apply/revert)",
+    "Feature detail endpoint GET /api/admin/features/{id}",
+    "Role template permissions endpoint GET /api/admin/role-templates/{id}/permissions",
+    "Spec route POST /api/admin/role-templates/{id}/apply-to-tenant not exposed",
+    "Internal usage capture endpoint POST /api/internal/usage/capture",
+    "Monitoring usage_snapshot_summary contract not implemented (currently null)",
+    "Real role template sync execution to tenant DB (job is status-only)",
+    "Replace/Merge behavioral semantics and preview/approval safeguards",
+    "Critical notification + contact verification delivery rules",
+    "Denied-request feature gate audit logging and reason headers",
+    "Scheduled jobs for hourly/daily usage snapshot and retries",
+    "Retention/export pipeline for 7-year audit data"
+  ]
+}
