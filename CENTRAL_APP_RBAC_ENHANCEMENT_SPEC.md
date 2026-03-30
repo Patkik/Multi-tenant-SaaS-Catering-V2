@@ -1,8 +1,27 @@
 # Central App RBAC Enhancement Specification
 
 **Date**: March 30, 2026  
-**Status**: Planned (documentation only)  
+**Status**: In progress (implementation started; first slice complete)  
 **Implementation Precondition**: Runtime code implementation requires central app source tree.
+
+## Implementation Status (Started)
+
+**Date**: March 30, 2026
+
+Completed items:
+- central-app scaffold created
+- features + feature_overrides + tenants migrations/models
+- FeatureService precedence implemented
+- admin endpoints implemented and secured by central admin token middleware + throttle
+- role templates + role-feature bindings API slice completed
+- tests passing: 11 tests / 29 assertions
+
+Next slice:
+- tenant monitoring endpoint
+- admin contacts/verification
+- usage snapshots/reporting
+- immutable RBAC audit trail/exports
+- apply endpoint real implementation
 
 ---
 

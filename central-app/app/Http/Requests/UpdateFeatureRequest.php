@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Feature;
+use App\Support\FeatureCategories;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -10,7 +11,7 @@ class UpdateFeatureRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return (bool) $this->attributes->get('central_admin_authenticated', false);
     }
 
     /**
@@ -24,7 +25,7 @@ class UpdateFeatureRequest extends FormRequest
         return [
             'name' => ['sometimes', 'string', 'max:255', Rule::unique('features', 'name')->ignore($feature->id)],
             'description' => ['sometimes', 'nullable', 'string'],
-            'category' => ['sometimes', 'string', 'in:Core,CRM,Billing,Reporting,Integration,Admin'],
+            'category' => ['sometimes', 'string', 'in:'.implode(',', FeatureCategories::all())],
             'default_enabled' => ['sometimes', 'boolean'],
             'requires_plan' => ['sometimes', 'nullable', 'string', 'max:50'],
             'deprecated_at' => ['sometimes', 'nullable', 'date'],

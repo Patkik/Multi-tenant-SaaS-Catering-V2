@@ -1,6 +1,5 @@
 <?php
 
-use App\Support\FeatureCategories;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -12,18 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('features', function (Blueprint $table): void {
+        Schema::create('role_templates', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('name')->unique();
             $table->text('description')->nullable();
-            $table->enum('category', FeatureCategories::all());
-            $table->boolean('default_enabled')->default(true);
-            $table->string('requires_plan')->nullable();
-            $table->timestamp('deprecated_at')->nullable();
+            $table->boolean('is_system_default')->default(false);
+            $table->string('created_by_admin')->nullable();
+            $table->json('metadata')->nullable();
             $table->timestamps();
-
-            $table->index('category');
-            $table->index('requires_plan');
         });
     }
 
@@ -32,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('features');
+        Schema::dropIfExists('role_templates');
     }
 };

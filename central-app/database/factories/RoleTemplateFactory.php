@@ -2,16 +2,15 @@
 
 namespace Database\Factories;
 
-use App\Models\Feature;
-use App\Support\FeatureCategories;
+use App\Models\RoleTemplate;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<Feature>
+ * @extends Factory<RoleTemplate>
  */
-class FeatureFactory extends Factory
+class RoleTemplateFactory extends Factory
 {
-    protected $model = Feature::class;
+    protected $model = RoleTemplate::class;
 
     /**
      * @return array<string, mixed>
@@ -21,10 +20,9 @@ class FeatureFactory extends Factory
         return [
             'name' => fake()->unique()->slug(),
             'description' => fake()->sentence(),
-            'category' => FeatureCategories::CORE,
-            'default_enabled' => true,
-            'requires_plan' => null,
-            'deprecated_at' => null,
+            'is_system_default' => false,
+            'created_by_admin' => fake()->safeEmail(),
+            'metadata' => null,
         ];
     }
 }

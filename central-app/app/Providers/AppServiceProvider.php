@@ -21,8 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Gate::define('admin.features.read', static fn (?Authenticatable $user): bool => true);
-        Gate::define('admin.features.write', static fn (?Authenticatable $user): bool => true);
-        Gate::define('admin.tenants.read-effective-features', static fn (?Authenticatable $user): bool => true);
+        Gate::define('admin.features.read', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.features.write', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.tenants.read-effective-features', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.role-templates.read', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.role-templates.write', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
+        Gate::define('admin.role-templates.apply', static fn (?Authenticatable $user): bool => (bool) request()->attributes->get('central_admin_authenticated', false));
     }
 }

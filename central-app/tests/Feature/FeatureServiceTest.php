@@ -74,4 +74,23 @@ class FeatureServiceTest extends TestCase
 
         $this->assertTrue($service->isFeatureEnabled($tenant, $feature));
     }
+
+    public function test_plan_deny_disables_feature_without_override(): void
+    {
+        $tenant = Tenant::factory()->create([
+            'plan_entitlements' => ['starter'],
+        ]);
+
+        $feature = Feature::factory()->create([
+            'default_enabled' => true,
+            'requires_plan' => 'pro',
+        ]);
+
+        $service = app(FeatureService::class);
+
+        $resolved = $service->resolveFeatureState($tenant, $feature);
+
+        $this->assertFalse($resolved['is_enabled']);
+        $this->assertSame('plan', $resolved['source']);
+    }
 }

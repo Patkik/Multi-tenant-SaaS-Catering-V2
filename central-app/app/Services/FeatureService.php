@@ -26,6 +26,16 @@ class FeatureService
             ->where('feature_id', $feature->id)
             ->first();
 
+        return $this->resolveFeatureStateFromOverride($tenant, $feature, $override, $now);
+    }
+
+    /**
+     * @param FeatureOverride|null $override
+     * @return array{feature_id:string, feature_name:string, is_enabled:bool, source:string}
+     */
+    private function resolveFeatureStateFromOverride(Tenant $tenant, Feature $feature, ?FeatureOverride $override, Carbon $now): array
+    {
+
         // 1) Active override always wins.
         if ($override !== null && $override->isActive($now)) {
             return [
@@ -60,9 +70,20 @@ class FeatureService
      */
     public function resolveEffectiveFeatures(Tenant $tenant): Collection
     {
+        $now = now();
+        $overridesByFeatureId = FeatureOverride::query()
+            ->where('tenant_id', $tenant->id)
+            ->get()
+            ->keyBy('feature_id');
+
         return Feature::query()
             ->orderBy('name')
             ->get()
-            ->map(fn (Feature $feature): array => $this->resolveFeatureState($tenant, $feature));
+            ->map(fn (Feature $feature): array => $this->resolveFeatureStateFromOverride(
+                $tenant,
+                $feature,
+                $overridesByFeatureId->get((string) $feature->id),
+                $now,
+            ));
     }
 }
