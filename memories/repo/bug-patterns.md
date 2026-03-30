@@ -1,0 +1,8 @@
+- Resolved bug pattern: for row-level async table actions, enforce a per-row lock and perform immediate optimistic state transition.
+- Prevent sticky optimistic UI by adding a bounded rollback timeout plus cleanup and backend reconciliation.
+- Required test coverage for this pattern: cancel-abort path, success with immediate action removal, failure with unlock plus error surfacing, and stale-pending rollback.
+- Tenancy tests: when only central tenant record state is under test, create fixtures with Tenant::withoutEvents(...) to avoid provisioning lifecycle side effects and nondeterministic status mutations.
+- Admin seeding source of truth: central admin account must be seeded by the canonical admin seeder only; avoid duplicate/manual creation paths.
+- Tenant seeding check: use tenancy manager driver-agnostic databaseExists(...) logic instead of direct information_schema queries.
+- Requirement verification pattern: run php artisan tinker --execute with count-based assertions (for example users/admin/domain counts) and compare against expected totals.
+- Documentation accuracy guardrail: treat subagent-generated docs as drafts; always verify high-risk claims (dependencies, routes, relationships, log channels, migrations, test presence) with direct file reads before finalizing.

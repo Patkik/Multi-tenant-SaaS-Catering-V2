@@ -1,0 +1,8 @@
+- Domain-based tenancy via SafeDomainTenantInitialization/Stancl should read tenant via tenant() helper, not request attributes.
+- Path-based tenancy via ResolveTenantFromRequest sets request attributes tenant and tenant_id; route closures reading request attributes must null-guard anyway.
+- When fixing tenant null crashes, verify both domain-based and path-based root/health handlers for consistent defensive checks.
+- Tenant creation flow: central Livewire TenantManager creates the tenant row and domain first, then the TenantCreated event triggers database creation + migrations and MarkTenantReady runs after DatabaseMigrated.
+- Domain format in this repo: path-based uses /tenant/{tenant}; domain-based uses tenant.localhost style subdomains, with localhost and 127.0.0.1 treated as central domains.
+- Tenant database naming is prefixed with tenant_ and tracked in tenants.database_name; provisioning_status gates access and should be ready before requests are allowed.
+- Environment constraint: MySQL is the required database backend for this project; treat non-MySQL paths as out of scope unless explicitly requested.
+- Critical reliability priority: tenant creation/provisioning must always work (tenant row/domain creation, DB creation, migrations, and ready state transition).

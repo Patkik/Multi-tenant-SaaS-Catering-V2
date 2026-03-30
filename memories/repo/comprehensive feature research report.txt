@@ -1,0 +1,225 @@
+Comprehensive Implementation Blueprint: Multi-tenant SaaS Catering
+
+Date: 2026-03-30
+Status: Execution blueprint only (current workspace does not contain a runnable Laravel app runtime).
+
+This document rewrites the prior research into a concrete, implementation-ready plan for the future app repository.
+
+====================================================================
+1) Scope and Non-negotiables
+====================================================================
+
+Primary goals:
+1. Build on latest stable Laravel release at execution time.
+2. Enforce MySQL as the required database engine.
+3. Make tenant creation and provisioning the P0 must-work path.
+4. Deliver role-specific tenant dashboards (Admin, Manager, Staff, Cashier).
+5. Provide API inventory for parallel backend/frontend development.
+6. Execute through phased delivery with acceptance criteria and verification gates.
+
+Constraints:
+- Current workspace lacks Laravel runtime files (artisan, composer app bootstrap, migrations, routes, etc.).
+- Therefore this is a delivery blueprint to be implemented in the actual app repository.
+
+====================================================================
+2) Platform Baseline (Laravel + MySQL)
+====================================================================
+
+| Area | Required Decision | Notes |
+|---|---|---|
+| Framework | Latest stable Laravel at implementation start | Use official installer/composer workflow and lock framework version in composer.json once initialized |
+| Database | MySQL only (central and tenant DBs) | No SQLite/PostgreSQL fallback in production plan |
+| Tenancy model | Database-per-tenant | Central DB stores tenant registry and billing metadata |
+| Auth/API | Laravel Sanctum | Session + token support for SPA/mobile readiness |
+| Feature flags | Laravel Pennant | Tenant-scoped feature rollout and package gating |
+| Realtime | Laravel Reverb | Live dashboard counters, booking updates, payment updates |
+| Queue ops | Laravel Horizon | Queue visibility, retries, failed job triage |
+| Performance insights | Laravel Pulse | Throughput, slow jobs, slow requests |
+| Frontend navigation typing | Laravel Wayfinder | Typed route contracts between backend and UI |
+
+Laravel Boost setup guidance:
+1. During app bootstrap, include Laravel Boost using the current official setup instructions for the chosen Laravel major version.
+2. Keep Boost setup in the initial platform commit so all contributors share the same baseline.
+3. Add a short "Boost verification" section in project docs that confirms install command, generated files, and local smoke test.
+4. Treat Boost as part of the default developer environment; do not postpone to a later phase.
+
+====================================================================
+3) Critical Architecture: Tenant Creation Must Work
+====================================================================
+
+Definition of done for tenant provisioning (P0):
+- Create tenant record in central DB.
+- Create tenant MySQL database/schema.
+- Run tenant migrations.
+- Seed minimum tenant data (roles, default settings, baseline package limits).
+- Create owner admin user for tenant.
+- Return tenant access URL/domain and initial credentials delivery flow.
+
+Suggested provisioning flow:
+1. API receives create-tenant request (validated).
+2. Persist central tenant row with status = provisioning.
+3. Dispatch provisioning job chain (idempotent).
+4. Create MySQL DB and apply tenant connection config.
+5. Run tenant migrations + seeders.
+6. Create default role set and owner user.
+7. Mark tenant status = active and emit domain-ready event.
+8. Send notification/webhook for external systems.
+
+Failure and recovery requirements:
+- Idempotency key for create-tenant API.
+- Retry-safe provisioning jobs (no duplicate tenant DB creation).
+- Compensating action on partial failure (status = failed, support action payload).
+- Structured logs for each provisioning stage.
+- Horizon tags include tenant_id and provisioning_run_id.
+
+====================================================================
+4) Tenant UI/UX Direction (Modern, Dynamic, Purposeful)
+====================================================================
+
+UX principles:
+- Fast time-to-insight on dashboard landing.
+- Motion used to explain state changes (not decorative noise).
+- Action-first cards: each metric card has one primary follow-up action.
+- Responsive layout for office desktop and on-site mobile operations.
+
+UI capabilities to include:
+- Chart layer for revenue, bookings, payment aging, and staffing workload trends.
+- Live tiles (pending approvals, due payments, active events today).
+- Filterable timelines for event progress.
+- Slide-over detail panels to avoid page reload churn.
+
+Recommended frontend stack options (choose one in app repo):
+- Livewire + Alpine + ApexCharts/Chart.js for rapid Laravel-native delivery.
+- Inertia + Vue/React + ECharts/Recharts for richer SPA interactions.
+
+Purposeful animation guidelines:
+- 120-220ms transitions for panel open/close and KPI updates.
+- Staggered load-in only on first dashboard render.
+- Realtime count transitions (delta flashes) for booking/payment updates.
+- Respect reduced-motion settings for accessibility.
+
+====================================================================
+5) Role-specific Tenant Dashboards (Critical)
+====================================================================
+
+| Role | Core Capabilities | Key Widgets | Primary Actions |
+|---|---|---|---|
+| Admin | Full access; manage users; configure packages/pricing; financial reports; system settings | MRR/revenue trend, plan utilization, unpaid balance aging, user activity feed | Create user, change role, edit package limits, run financial exports, update tenant settings |
+| Manager | Approve bookings; monitor events; view reports | Booking approval queue, event calendar, staff load, event completion funnel | Approve/reject booking, assign staff, adjust event schedule, generate ops report |
+| Staff | View assigned events; update event status | My assignments today, task checklist, event status timeline | Mark stage complete, add event notes, flag issue/blocker |
+| Cashier | Record payments; monitor balances; generate receipts | Due today, outstanding invoices, payment method mix | Record payment, reconcile balance, generate/send receipt |
+
+Access control requirements:
+- Enforce role permissions with policy + permission middleware.
+- Restrict data queries to tenant boundary and role scope.
+- Audit sensitive actions (pricing changes, refunds, role changes).
+
+====================================================================
+6) API Inventory (Implementation Starter)
+====================================================================
+
+Conventions:
+- Versioned prefix: /api/v1
+- Auth: Sanctum bearer tokens for API clients
+- All tenant endpoints require tenant context resolution and authorization
+
+| Domain | Endpoint Examples | Purpose |
+|---|---|---|
+| Auth | POST /auth/login, POST /auth/logout, POST /auth/token, GET /auth/me | Session/token auth, current user profile |
+| Tenant Provisioning | POST /tenants, GET /tenants/{id}, POST /tenants/{id}/retry-provision, GET /tenants/{id}/provision-status | Create tenant, status checks, controlled retry |
+| Dashboard Stats | GET /dashboard/admin, GET /dashboard/manager, GET /dashboard/staff, GET /dashboard/cashier | Role-specific KPI payloads |
+| Users | GET /users, POST /users, PATCH /users/{id}, PATCH /users/{id}/role, DELETE /users/{id} | User lifecycle and role assignment |
+| Bookings/Events | GET /events, POST /events, PATCH /events/{id}, POST /events/{id}/approve, POST /events/{id}/assign-staff | Booking approval and event operations |
+| Packages | GET /packages, POST /packages, PATCH /packages/{id}, PATCH /packages/{id}/pricing | Package and pricing management |
+| Payments | GET /payments, POST /payments, GET /payments/balances, POST /payments/{id}/reconcile | Payment recording and balance tracking |
+| Reports | GET /reports/financial, GET /reports/events, GET /reports/staffing | Downloadable and on-screen reporting |
+| Receipts | POST /receipts, GET /receipts/{id}, POST /receipts/{id}/send | Receipt generation and delivery |
+| Notifications | GET /notifications, PATCH /notifications/{id}/read, POST /notifications/test | In-app and test dispatch |
+| Webhooks | POST /webhooks/payments, POST /webhooks/external-bookings | External event ingestion |
+| Analytics | GET /analytics/revenue-trend, GET /analytics/booking-funnel, GET /analytics/payment-aging | Chart-ready trend endpoints |
+
+API quality requirements:
+- Form request validation on all write endpoints.
+- Consistent response envelope and error codes.
+- Idempotency on provisioning and payment-critical endpoints.
+- OpenAPI spec maintained from phase 1 onward.
+
+====================================================================
+7) Phased Implementation Plan
+====================================================================
+
+| Phase | Outcome | Key Deliverables |
+|---|---|---|
+| Phase 0: Foundation | Laravel baseline ready for team execution | Latest Laravel app scaffold, MySQL config, Sanctum, Pennant, Pulse, Horizon, Reverb, Wayfinder wiring, Boost setup completed |
+| Phase 1: Tenant Provisioning P0 | Tenant creation is reliable and recoverable | Central tenant registry, provisioning job chain, tenant migrations/seeding, status tracking, retry endpoint, provisioning observability |
+| Phase 2: RBAC + Core Data | Safe multi-role operations | Roles/permissions, users API, events/bookings API, package/pricing API, policy coverage |
+| Phase 3: Dashboards + Realtime UX | Role dashboards become daily operational UI | Admin/Manager/Staff/Cashier dashboards, chart endpoints, realtime updates via Reverb, purposeful motion pass |
+| Phase 4: Payments + Receipts + Reports | Financial workflow complete | Payment recording/reconciliation, receipt generation, financial reports, cashier dashboard hardening |
+| Phase 5: Hardening + Launch | Production readiness | Load/security testing, backup/restore drills, alerting thresholds, runbooks, rollout checklist |
+
+Execution sequencing rule:
+- No phase advances until acceptance criteria and verification checklist for current phase are fully green.
+
+====================================================================
+8) Acceptance Criteria (by capability)
+====================================================================
+
+Tenant provisioning (P0):
+- Given a valid create request, tenant reaches active state within defined SLO.
+- Tenant DB exists in MySQL and passes migration checksum.
+- Owner admin can authenticate and access tenant domain.
+- Failed provisioning is observable, retryable, and does not duplicate resources.
+
+Role dashboards:
+- Each role sees only authorized widgets and actions.
+- Dashboard loads return chart-ready data within performance budget.
+- Realtime updates apply without full page reload.
+
+Payments and receipts:
+- Cashier can post payment and see updated balance immediately.
+- Receipt generation produces a stored artifact and retrievable record.
+- Financial report totals reconcile with ledger entries.
+
+Platform quality:
+- Queue failure visibility is available in Horizon.
+- Pulse displays key app and queue performance signals.
+- Feature flags can disable non-critical modules without breaking core flows.
+
+====================================================================
+9) Verification Checklist (Pre-release Gate)
+====================================================================
+
+Provisioning verification:
+- [ ] Create 10 tenants sequentially; all complete successfully.
+- [ ] Create 5 tenants concurrently; no race-condition failures.
+- [ ] Simulate provisioning failure; retry succeeds without duplication.
+- [ ] Validate tenant isolation by cross-tenant access tests.
+
+API verification:
+- [ ] All inventory endpoints have auth, validation, policy coverage.
+- [ ] Contract tests pass for success and error responses.
+- [ ] OpenAPI documentation matches live routes.
+
+Dashboard verification:
+- [ ] Role-based widget visibility is correct for all 4 roles.
+- [ ] Charts render on desktop and mobile viewports.
+- [ ] Realtime counters update under event/payment activity.
+- [ ] Reduced-motion mode disables non-essential animations.
+
+Operations verification:
+- [ ] Horizon queues healthy under load test profile.
+- [ ] Pulse dashboards show no unresolved critical bottlenecks.
+- [ ] Logs and alerts include tenant_id correlation.
+- [ ] Backup and restore tested for central DB and one tenant DB.
+
+====================================================================
+10) Implementation Notes for Handoff
+====================================================================
+
+Because this workspace currently lacks Laravel runtime files, this document should be treated as an execution blueprint for the app repository where Laravel is initialized and runnable.
+
+Recommended first commit in app repo:
+1. Initialize latest stable Laravel project.
+2. Enforce MySQL env and connection policies.
+3. Add baseline packages (Sanctum, Pennant, Reverb, Horizon, Pulse, Wayfinder) and complete Laravel Boost setup.
+4. Add tenant provisioning vertical slice with tests before building secondary features.
