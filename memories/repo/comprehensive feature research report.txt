@@ -223,3 +223,39 @@ Recommended first commit in app repo:
 2. Enforce MySQL env and connection policies.
 3. Add baseline packages (Sanctum, Pennant, Reverb, Horizon, Pulse, Wayfinder) and complete Laravel Boost setup.
 4. Add tenant provisioning vertical slice with tests before building secondary features.
+
+====================================================================
+11) Central RBAC Enhancement Track (Planned)
+====================================================================
+
+Scope: Super-admin controls for fine-grained tenant feature management, role template customization, and compliance audit.
+
+Deliverables:
+- Feature Catalog: centralized registry with per-tenant override toggles
+- Role Templates: reusable RBAC configurations (clone, sync, rollback capability)
+- Tenant Contacts: registry with email verification for notifications
+- Usage Snapshots: hourly/daily metrics (active users, API calls, events, payments)
+- RBAC Audit Log: immutable 7-year compliance trail
+
+Key Requirements:
+- Feature toggle deny precedence (whitelist model)
+- Role template sync with zero downtime
+- Expired override auto-revert
+- Usage snapshot accuracy (95%+ within 1 hour)
+- Contact verification before critical notifications
+
+Success Metrics:
+- Tenants provisioned with custom templates in < 2 minutes
+- Template sync < 60 seconds per tenant
+- Usage snapshot latency < 1 hour for 95% of events
+- Zero audit log data loss (7-year retention)
+- Feature toggle latency < 100ms
+
+Implementation: 8-week phased rollout (Phase 1-5 in context/central-rbac-enhancement-context.md)
+Phase 1 (weeks 1-2): Core models, migrations, API
+Phase 2 (weeks 3-4): Feature toggle UI, contacts management
+Phase 3 (weeks 5-6): Role template sync, usage metrics
+Phase 4 (week 7): Audit & compliance controls
+Phase 5 (week 8): Auto-recovery & monitoring
+
+Prerequisite: Central app Laravel source tree with models, controllers, routes

@@ -139,6 +139,40 @@ class ProductionExtractor:
         except Exception as e:
             print(f"  ❌ Failed: {e}")
             return not critical
+
+    def extract_skills_library(self) -> bool:
+        """Extract skills from either supported source layout into .github/skills."""
+        print("📂 Extracting skills library...")
+
+        source_candidates = [
+            ".github/skills",
+            ".agents/skills",
+        ]
+        source_relative = next(
+            (path for path in source_candidates if (self.source_root / path).exists()),
+            None,
+        )
+
+        if source_relative is None:
+            self.missing_files.append(".github/skills|.agents/skills")
+            print("  ⚠️  Source not found: .github/skills or .agents/skills")
+            return False
+
+        source_dir = self.source_root / source_relative
+        target_dir = self.target / ".github/skills"
+
+        try:
+            if target_dir.exists() and self.force:
+                shutil.rmtree(target_dir)
+            target_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source_dir, target_dir, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+            file_count = len(list(target_dir.rglob("*")))
+            print(f"  ✅ Extracted {file_count} items from {source_relative} -> .github/skills")
+            return True
+        except Exception as e:
+            print(f"  ❌ Failed: {e}")
+            return False
     
     def extract_file(self, relative_path: str, purpose: str, critical: bool = True) -> bool:
         """Extract single file"""
@@ -181,7 +215,7 @@ class ProductionExtractor:
         success &= self.extract_python_modules()
         success &= self.extract_directory(".github/instructions", "Agent instructions", True)
         success &= self.extract_directory(".github/agents", "Agent definitions", True)
-        success &= self.extract_directory(".github/skills", "Skills library", True)
+        success &= self.extract_skills_library()
         success &= self.extract_directory(".github/hooks", "Git hooks", False)
         success &= self.extract_directory("documentation", "Documentation", True)
         success &= self.extract_directory("context", "Context files", True)

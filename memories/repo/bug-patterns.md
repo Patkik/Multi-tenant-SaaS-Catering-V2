@@ -6,3 +6,5 @@
 - Tenant seeding check: use tenancy manager driver-agnostic databaseExists(...) logic instead of direct information_schema queries.
 - Requirement verification pattern: run php artisan tinker --execute with count-based assertions (for example users/admin/domain counts) and compare against expected totals.
 - Documentation accuracy guardrail: treat subagent-generated docs as drafts; always verify high-risk claims (dependencies, routes, relationships, log channels, migrations, test presence) with direct file reads before finalizing.
+- Validation-extraction contract guardrail: keep validation gates aligned with downstream extractor requirements; if validation accepts fallback paths (for example .agents/skills), extraction must support the same fallback or strict validation must fail, and later optional passes must not overwrite/downgrade critical validation result keys.
+- Laravel gate placeholder guardrail: in API tests without authenticated users, define gates with nullable user signatures (for example fn (?Authenticatable $user) => true) or guest requests will be denied with 403.

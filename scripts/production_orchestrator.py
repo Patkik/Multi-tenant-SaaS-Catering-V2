@@ -48,39 +48,134 @@ class ProductionOrchestrator:
             "status": "pending",
         }
     
-    def validate_project_structure(self) -> bool:
-        """Validate that critical directories exist"""
+    def validate_project_structure(self, strict: bool = False) -> bool:
+        """Validate workspace structure.
+
+        strict=False: blueprint-friendly validation with warnings for pipeline prerequisites.
+        strict=True: hard-fail when extraction/full-pipeline prerequisites are missing.
+        """
         print("\n🔍 VALIDATION: Project Structure")
         print("=" * 60)
-        
+
         critical_paths = {
             "orchestrator": "Python orchestration module",
-            ".github/instructions": "Agent instructions",
+            "scripts/production_extractor.py": "Production extractor script",
+            "scripts/context_generator.py": "Context generator script",
+        }
+
+        # Keep strict prerequisites aligned with production_extractor.py expectations.
+        pipeline_prerequisites = {
+            ".github/instructions": "Agent behavior specifications",
             ".github/agents": "Agent definitions",
-            ".github/skills": "Skills library",
-            ".github/hooks": "Git hooks",
+            "documentation": "System documentation",
+            "context": "Execution context and state",
+            "tests": "Test suites",
+            "orchestrator/__init__.py": "Package initialization",
+            "orchestrator/dispatcher.py": "Agent dispatcher logic",
+            "orchestrator/state/db_manager.py": "State management",
+            "pyproject.toml": "Project configuration",
+            ".github/copilot-instructions.md": "System instructions",
+            "README.md": "Project README",
+        }
+
+        optional_paths = {
+            ".github/instructions": "Legacy agent instructions",
+            ".github/agents": "Legacy agent definitions",
+            ".github/hooks": "Legacy git hooks",
             "documentation": "Documentation files",
             "context": "Context folder",
             "pyproject.toml": "Project configuration",
             "README.md": "README file",
+            "tests": "Test suites",
         }
-        
+
         validation_results = {}
         all_valid = True
-        
+
         for path_str, description in critical_paths.items():
             full_path = self.workspace_root / path_str
             exists = full_path.exists()
             validation_results[path_str] = {
                 "description": description,
                 "exists": exists,
+                "level": "critical",
             }
-            
+
             status = "✅" if exists else "❌"
             print(f"  {status} {path_str}: {description}")
-            
+
             if not exists:
                 all_valid = False
+
+        if strict:
+            for path_str, description in pipeline_prerequisites.items():
+                full_path = self.workspace_root / path_str
+                exists = full_path.exists()
+                validation_results[path_str] = {
+                    "description": description,
+                    "exists": exists,
+                    "level": "critical",
+                }
+
+                status = "✅" if exists else "❌"
+                print(f"  {status} {path_str}: {description}")
+
+                if not exists:
+                    all_valid = False
+        else:
+            for path_str, description in pipeline_prerequisites.items():
+                # Skip duplicate rows already emitted from critical_paths.
+                if path_str in critical_paths:
+                    continue
+
+                full_path = self.workspace_root / path_str
+                exists = full_path.exists()
+                validation_results[path_str] = {
+                    "description": description,
+                    "exists": exists,
+                    "level": "optional",
+                }
+
+                status = "✅" if exists else "⚠️"
+                print(f"  {status} {path_str}: {description}")
+
+        # Skills source can come from either legacy .github or current .agents layout.
+        skills_paths = [".github/skills", ".agents/skills"]
+        existing_skills_paths = [
+            p for p in skills_paths if (self.workspace_root / p).is_dir()
+        ]
+        skills_exists = len(existing_skills_paths) > 0
+        validation_results["skills_source"] = {
+            "description": "Skills library (.github/skills or .agents/skills)",
+            "exists": skills_exists,
+            "level": "critical" if strict else "optional",
+            "checked_paths": skills_paths,
+            "resolved_paths": existing_skills_paths,
+            "strict": strict,
+        }
+        if skills_exists:
+            resolved = ", ".join(existing_skills_paths)
+            print(f"  ✅ skills_source: Skills library found at {resolved}")
+        else:
+            status = "❌" if strict else "⚠️"
+            print(f"  {status} skills_source: Skills library missing (.github/skills or .agents/skills)")
+            if strict:
+                all_valid = False
+
+        for path_str, description in optional_paths.items():
+            if path_str in validation_results:
+                continue
+
+            full_path = self.workspace_root / path_str
+            exists = full_path.exists()
+            validation_results[path_str] = {
+                "description": description,
+                "exists": exists,
+                "level": "optional",
+            }
+
+            status = "✅" if exists else "⚠️"
+            print(f"  {status} {path_str}: {description}")
         
         self.report["steps"]["validation"] = {
             "status": "PASSED" if all_valid else "FAILED",
@@ -312,7 +407,7 @@ class ProductionOrchestrator:
         print()
         
         steps = [
-            ("validation", self.validate_project_structure),
+            ("validation", lambda: self.validate_project_structure(strict=True)),
             ("extraction", lambda: self.run_extractor(force)),
             ("documentation", self.run_documentation_converter),
             ("context", self.run_context_generator),
@@ -374,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
     orchestrator = ProductionOrchestrator(workspace, target)
     
     if args.action == "validate":
-        return 0 if orchestrator.validate_project_structure() else 1
+        return 0 if orchestrator.validate_project_structure(strict=False) else 1
     elif args.action == "extract":
         return 0 if orchestrator.run_extractor(args.force) else 1
     elif args.action == "convert":

@@ -632,6 +632,33 @@ See documentation/implementation-phases/IMPLEMENTATION_MASTER_PLAN.md for detail
 
 ---
 
+## Central RBAC Enhancements (Planned)
+
+**Status**: Specification and context documentation complete; runtime code implementation pending.  
+**Reference**: See CENTRAL_APP_RBAC_ENHANCEMENT_SPEC.md for full requirements.
+
+The central app will be enhanced with super-admin controls for fine-grained tenant management:
+
+**Super-Admin Capabilities**:
+- **Feature Catalog & Toggles**: Centralized registry of all features (Staff Assignment, Payment Analytics, etc.) with per-tenant toggle overrides and auto-expiry rules.
+- **Role Template Management**: Create custom role templates beyond the standard four-tier model (Admin, Manager, Staff, Cashier); clone and sync templates to running tenants with zero downtime.
+- **Tenant Contact Registry**: Maintain primary and secondary contacts (owner, support, technical) per tenant with email verification for critical notifications.
+- **Usage Metrics & Snapshots**: Track active users, API calls, events, and payments at hourly/daily intervals for usage-based billing and compliance analytics.
+- **RBAC Audit Trail**: Immutable 7-year audit log of all feature overrides, role changes, and enforcement decisions with compliance export.
+
+**Domain Additions**: Feature, FeatureOverride, RoleTemplate, RoleTemplatePermission, TenantAdminContact, UsageSnapshot, RBACChangeAudit entities
+
+**Key Enforcement Rule**: Feature toggles use deny precedence (whitelist model) — if any deny exists, feature is OFF.
+
+**Monitoring & Auto-Recovery**:
+- Expired feature overrides auto-revert with audit logging
+- Missing usage snapshots trigger ops alerts
+- Unverified critical contacts prevent access to notifications
+
+**Implementation Precondition**: Runtime code requires Laravel central app source tree (models, migrations, controllers, routes). Current workspace contains specification and architecture only.
+
+---
+
 ## Summary
 
 CaterPro is a **functioning multi-tenant SaaS platform with critical billing issues**:
