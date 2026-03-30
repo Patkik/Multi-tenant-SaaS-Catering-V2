@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admin\FeatureController;
 use App\Http\Controllers\Api\Admin\TenantEffectiveFeatureController;
 use App\Http\Controllers\Api\Admin\ApplyRoleTemplateToTenantController;
 use App\Http\Controllers\Api\Admin\RoleTemplateController;
+use App\Http\Controllers\Api\Admin\TenantController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('admin')->middleware(['central.admin', 'throttle:60,1'])->group(function (): void {
@@ -15,6 +16,7 @@ Route::prefix('admin')->middleware(['central.admin', 'throttle:60,1'])->group(fu
     Route::post('/role-templates', [RoleTemplateController::class, 'store']);
     Route::patch('/role-templates/{roleTemplate}', [RoleTemplateController::class, 'update']);
 
+    Route::post('/tenants', [TenantController::class, 'store']);
     Route::get('/tenants/{tenant}/effective-features', [TenantEffectiveFeatureController::class, 'index']);
     Route::post('/tenants/{tenant}/role-templates/{roleTemplate}/apply', ApplyRoleTemplateToTenantController::class);
 });

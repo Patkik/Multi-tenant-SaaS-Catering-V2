@@ -23,6 +23,9 @@ class Tenant extends Model
         'database_name',
         'plan_code',
         'plan_entitlements',
+        'provisioning_status',
+        'provisioning_error',
+        'provisioned_at',
     ];
 
     /**
@@ -32,6 +35,7 @@ class Tenant extends Model
     {
         return [
             'plan_entitlements' => 'array',
+            'provisioned_at' => 'datetime',
         ];
     }
 
