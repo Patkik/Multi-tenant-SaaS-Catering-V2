@@ -19,7 +19,12 @@ use Illuminate\Support\Facades\Schema;
 $centralHost = strtolower((string) env('CENTRAL_APP_HOST', 'localhost'));
 
 $isCentralRequest = static function (Request $request) use ($centralHost): bool {
-    return strtolower($request->getHost()) === $centralHost;
+    $host = strtolower($request->getHost());
+    // Treat 127.0.0.1 and localhost as equivalent for local development
+    if ($centralHost === 'localhost' && ($host === '127.0.0.1' || $host === 'localhost')) {
+        return true;
+    }
+    return $host === $centralHost;
 };
 
 $resolveTenantFromRequest = static function (Request $request): ?Tenant {
