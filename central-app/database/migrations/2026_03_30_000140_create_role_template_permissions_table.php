@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('permission');
             $table->timestamps();
 
-            $table->unique(['role_template_id', 'role_name', 'permission']);
+            $table->unique(['role_template_id', 'role_name', 'permission'], 'rt_perm_unique');
             $table->index('role_name');
         });
     }

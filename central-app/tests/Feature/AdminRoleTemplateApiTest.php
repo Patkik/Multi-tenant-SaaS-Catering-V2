@@ -10,8 +10,12 @@ use App\Models\RoleTemplateFeature;
 use App\Models\RoleTemplatePermission;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\TestCase;
+use Throwable;
 
 class AdminRoleTemplateApiTest extends TestCase
 {
@@ -404,5 +408,150 @@ class AdminRoleTemplateApiTest extends TestCase
         $response
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['permissions.0']);
+    }
+
+    public function test_apply_job_propagates_merge_and_replace_to_tenant_runtime_tables(): void
+    {
+        config()->set('tenancy.runtime_connection', 'sqlite');
+        config()->set('tenancy.runtime_connection_alias', 'tenant_runtime_test');
+
+        $tenantDatabasePath = storage_path('framework/testing/'.Str::uuid().'-tenant-runtime.sqlite');
+        if (! is_dir(dirname($tenantDatabasePath))) {
+            mkdir(dirname($tenantDatabasePath), 0777, true);
+        }
+        touch($tenantDatabasePath);
+
+        $tenant = Tenant::factory()->create([
+            'database_name' => $tenantDatabasePath,
+        ]);
+
+        Feature::factory()->create([
+            'name' => 'analytics',
+        ]);
+
+        $roleTemplate = RoleTemplate::factory()->create([
+            'name' => 'EventSupervisor',
+        ]);
+
+        RoleTemplatePermission::factory()->create([
+            'role_template_id' => $roleTemplate->id,
+            'role_name' => 'EventSupervisor',
+            'permission' => 'events.view',
+        ]);
+        RoleTemplateFeature::factory()->create([
+            'role_template_id' => $roleTemplate->id,
+            'role_name' => 'EventSupervisor',
+            'feature_key' => 'analytics',
+            'is_enabled' => true,
+        ]);
+
+        $mergeApplication = RoleTemplateApplication::query()->create([
+            'tenant_id' => $tenant->id,
+            'role_template_id' => $roleTemplate->id,
+            'strategy' => 'merge',
+            'status' => RoleTemplateApplication::STATUS_QUEUED,
+        ]);
+
+        $mergeJob = new ApplyRoleTemplateToTenantJob($mergeApplication->id);
+        $mergeJob->handle($this->app->make(\App\Services\RoleTemplateSyncService::class));
+
+        $this->assertTrue(Schema::connection('tenant_runtime_test')->hasTable('tenant_roles'));
+        $this->assertTrue(Schema::connection('tenant_runtime_test')->hasTable('tenant_role_permissions'));
+        $this->assertTrue(Schema::connection('tenant_runtime_test')->hasTable('tenant_role_features'));
+
+        $this->assertDatabaseHas('tenant_roles', [
+            'role_name' => 'EventSupervisor',
+        ], 'tenant_runtime_test');
+        $this->assertDatabaseHas('tenant_role_permissions', [
+            'role_name' => 'EventSupervisor',
+            'permission' => 'events.view',
+        ], 'tenant_runtime_test');
+        $this->assertDatabaseHas('tenant_role_features', [
+            'role_name' => 'EventSupervisor',
+            'feature_key' => 'analytics',
+            'is_enabled' => 1,
+        ], 'tenant_runtime_test');
+
+        DB::connection('tenant_runtime_test')->table('tenant_role_permissions')->insert([
+            'id' => (string) Str::uuid(),
+            'role_name' => 'EventSupervisor',
+            'permission' => 'legacy.permission',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::connection('tenant_runtime_test')->table('tenant_role_features')->insert([
+            'id' => (string) Str::uuid(),
+            'role_name' => 'EventSupervisor',
+            'feature_key' => 'legacy-feature',
+            'is_enabled' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $replaceApplication = RoleTemplateApplication::query()->create([
+            'tenant_id' => $tenant->id,
+            'role_template_id' => $roleTemplate->id,
+            'strategy' => 'replace',
+            'status' => RoleTemplateApplication::STATUS_QUEUED,
+        ]);
+
+        $replaceJob = new ApplyRoleTemplateToTenantJob($replaceApplication->id);
+        $replaceJob->handle($this->app->make(\App\Services\RoleTemplateSyncService::class));
+
+        $this->assertDatabaseMissing('tenant_role_permissions', [
+            'role_name' => 'EventSupervisor',
+            'permission' => 'legacy.permission',
+        ], 'tenant_runtime_test');
+        $this->assertDatabaseMissing('tenant_role_features', [
+            'role_name' => 'EventSupervisor',
+            'feature_key' => 'legacy-feature',
+        ], 'tenant_runtime_test');
+
+        $this->assertSame(RoleTemplateApplication::STATUS_APPLIED, $mergeApplication->fresh()->status);
+        $this->assertSame(RoleTemplateApplication::STATUS_APPLIED, $replaceApplication->fresh()->status);
+
+        DB::disconnect('tenant_runtime_test');
+        DB::purge('tenant_runtime_test');
+        @unlink($tenantDatabasePath);
+    }
+
+    public function test_apply_job_marks_application_failed_when_tenant_connection_fails(): void
+    {
+        config()->set('tenancy.runtime_connection', 'sqlite');
+        config()->set('tenancy.runtime_connection_alias', 'tenant_runtime_fail_test');
+
+        $tenant = Tenant::factory()->create([
+            'database_name' => storage_path('framework/testing/missing/'.Str::uuid().'/tenant-runtime.sqlite'),
+        ]);
+
+        $roleTemplate = RoleTemplate::factory()->create([
+            'name' => 'OpsAssistant',
+        ]);
+
+        RoleTemplatePermission::factory()->create([
+            'role_template_id' => $roleTemplate->id,
+            'role_name' => 'OpsAssistant',
+            'permission' => 'ops.view',
+        ]);
+
+        $application = RoleTemplateApplication::query()->create([
+            'tenant_id' => $tenant->id,
+            'role_template_id' => $roleTemplate->id,
+            'strategy' => 'merge',
+            'status' => RoleTemplateApplication::STATUS_QUEUED,
+        ]);
+
+        $job = new ApplyRoleTemplateToTenantJob($application->id);
+
+        try {
+            $job->handle($this->app->make(\App\Services\RoleTemplateSyncService::class));
+            $this->fail('Expected tenant runtime connection failure.');
+        } catch (Throwable) {
+            $this->assertSame(RoleTemplateApplication::STATUS_FAILED, $application->fresh()->status);
+            $this->assertNotNull($application->fresh()->error_message);
+        } finally {
+            DB::disconnect('tenant_runtime_fail_test');
+            DB::purge('tenant_runtime_fail_test');
+        }
     }
 }

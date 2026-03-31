@@ -20,7 +20,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->foreign('feature_key')->references('name')->on('features')->cascadeOnDelete();
-            $table->unique(['role_template_id', 'role_name', 'feature_key']);
+            $table->unique(['role_template_id', 'role_name', 'feature_key'], 'rt_feat_unique');
             $table->index('feature_key');
         });
     }
