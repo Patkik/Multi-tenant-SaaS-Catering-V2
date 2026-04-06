@@ -5,25 +5,17 @@
 @section('content')
     @php
         $tenantRole = $tenantRole ?? session('tenant_role', 'staff');
-        $canEdit = in_array($tenantRole, ['admin', 'manager', 'staff']);
-        $canDelete = in_array($tenantRole, ['admin']);
-        
-        $orders = [
-            ['id' => '1234', 'customer' => 'Maria Santos', 'items' => 15, 'total' => 450.00, 'status' => 'preparing', 'time' => '10:30 AM', 'type' => 'delivery'],
-            ['id' => '1233', 'customer' => 'Tech Corp Event', 'items' => 50, 'total' => 1250.00, 'status' => 'ready', 'time' => '11:00 AM', 'type' => 'pickup'],
-            ['id' => '1232', 'customer' => 'Wedding Reception', 'items' => 120, 'total' => 3500.00, 'status' => 'delivered', 'time' => '09:00 AM', 'type' => 'catering'],
-            ['id' => '1231', 'customer' => 'John Smith', 'items' => 8, 'total' => 185.00, 'status' => 'pending', 'time' => '12:00 PM', 'type' => 'delivery'],
-            ['id' => '1230', 'customer' => 'Birthday Party', 'items' => 35, 'total' => 875.00, 'status' => 'preparing', 'time' => '02:00 PM', 'type' => 'pickup'],
-        ];
-
-        $statusColors = [
-            'pending' => 'bg-gray-100 text-gray-700',
-            'preparing' => 'bg-amber-100 text-amber-700',
-            'ready' => 'bg-blue-100 text-blue-700',
-            'delivered' => 'bg-green-100 text-green-700',
-            'cancelled' => 'bg-red-100 text-red-700',
-        ];
+        $canCreateOrders = (bool) ($canCreateOrders ?? false);
+        $canUpdateOrders = (bool) ($canUpdateOrders ?? ($canEdit ?? false));
+        $canDeleteOrders = (bool) ($canDeleteOrders ?? ($canDelete ?? false));
+        $filters = $filters ?? ['search' => '', 'status' => '', 'type' => '', 'today' => false];
     @endphp
+
+    @if (session('success'))
+        <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            {{ session('success') }}
+        </div>
+    @endif
 
     <!-- Page Header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -33,10 +25,10 @@
                 Manage and track all orders in real-time.
             </p>
         </div>
-        @if ($canEdit)
-            <button class="rounded-full bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--brand-deep)] transition">
+        @if ($canCreateOrders)
+            <a href="{{ route('tenant.orders.create') }}" class="inline-flex rounded-full bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--brand-deep)] transition">
                 + New Order
-            </button>
+            </a>
         @endif
     </div>
 
@@ -45,49 +37,49 @@
         <article class="tile p-4">
             <div class="flex items-center justify-between">
                 <p class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Today's Orders</p>
-                <span class="badge badge-brand">+12%</span>
             </div>
-            <p class="mt-2 text-3xl font-bold">24</p>
+            <p class="mt-2 text-3xl font-bold">{{ $stats['today_orders'] ?? 0 }}</p>
         </article>
         <article class="tile p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Pending</p>
-            <p class="mt-2 text-3xl font-bold text-amber-600">5</p>
+            <p class="mt-2 text-3xl font-bold text-amber-600">{{ $stats['pending_orders'] ?? 0 }}</p>
         </article>
         <article class="tile p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">In Progress</p>
-            <p class="mt-2 text-3xl font-bold text-blue-600">12</p>
+            <p class="mt-2 text-3xl font-bold text-blue-600">{{ $stats['in_progress_orders'] ?? 0 }}</p>
         </article>
         <article class="tile p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Completed</p>
-            <p class="mt-2 text-3xl font-bold text-green-600">7</p>
+            <p class="mt-2 text-3xl font-bold text-green-600">{{ $stats['completed_orders'] ?? 0 }}</p>
         </article>
     </section>
 
     <!-- Filters -->
-    <section class="mt-6 flex flex-wrap items-center gap-3">
+    <form method="GET" action="{{ route('tenant.orders.index') }}" class="mt-6 flex flex-wrap items-center gap-3">
         <div class="flex items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 py-2">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input type="text" placeholder="Search orders..." class="bg-transparent text-sm outline-none w-40" />
+            <input name="search" value="{{ $filters['search'] }}" type="text" placeholder="Search orders..." class="bg-transparent text-sm outline-none w-40" />
         </div>
-        <select class="rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none">
-            <option>All Status</option>
-            <option>Pending</option>
-            <option>Preparing</option>
-            <option>Ready</option>
-            <option>Delivered</option>
+        <select name="status" class="rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none">
+            <option value="">All Status</option>
+            @foreach (($orderStatuses ?? []) as $status)
+                <option value="{{ $status }}" @selected($filters['status'] === $status)>{{ $status }}</option>
+            @endforeach
         </select>
-        <select class="rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none">
-            <option>All Types</option>
-            <option>Delivery</option>
-            <option>Pickup</option>
-            <option>Catering</option>
+        <select name="type" class="rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none">
+            <option value="">All Types</option>
+            @foreach (($orderTypes ?? []) as $type)
+                <option value="{{ $type }}" @selected($filters['type'] === $type)>{{ $type }}</option>
+            @endforeach
         </select>
-        <button class="rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm hover:bg-gray-50">
+        <button name="today" value="1" class="rounded-lg border border-[var(--line)] px-3 py-2 text-sm {{ $filters['today'] ? 'bg-[var(--brand-light)] text-[var(--brand)]' : 'bg-white hover:bg-gray-50' }}">
             Today
         </button>
-    </section>
+        <button type="submit" class="rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-deep)]">Apply</button>
+        <a href="{{ route('tenant.orders.index') }}" class="rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm hover:bg-gray-50">Reset</a>
+    </form>
 
     <!-- Orders Table -->
     <section class="mt-6">
@@ -107,59 +99,84 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-[var(--line)]">
-                        @foreach ($orders as $order)
+                        @forelse ($orders as $order)
                             <tr class="hover:bg-gray-50">
                                 <td class="px-5 py-4">
-                                    <span class="font-mono font-semibold">#{{ $order['id'] }}</span>
+                                    <span class="font-mono font-semibold">{{ $order->order_number }}</span>
                                 </td>
                                 <td class="px-5 py-4">
-                                    <p class="font-medium">{{ $order['customer'] }}</p>
+                                    <p class="font-medium">{{ $order->customer_name }}</p>
                                 </td>
                                 <td class="px-5 py-4 text-sm text-[var(--muted)]">
-                                    {{ $order['items'] }} items
+                                    {{ $order->items_count }} items
                                 </td>
                                 <td class="px-5 py-4 font-semibold">
-                                    ${{ number_format($order['total'], 2) }}
+                                    ${{ number_format((float) $order->total_amount, 2) }}
                                 </td>
                                 <td class="px-5 py-4">
-                                    <span class="badge badge-muted">{{ ucfirst($order['type']) }}</span>
+                                    <span class="badge badge-muted">{{ $order->order_type }}</span>
                                 </td>
                                 <td class="px-5 py-4">
-                                    <span class="badge {{ $statusColors[$order['status']] }}">
-                                        {{ ucfirst($order['status']) }}
+                                    <span class="badge {{ $statusColors[$order->status] ?? 'bg-gray-100 text-gray-700' }}">
+                                        {{ $order->status }}
                                     </span>
                                 </td>
                                 <td class="px-5 py-4 text-sm text-[var(--muted)]">
-                                    {{ $order['time'] }}
+                                    {{ $order->ordered_at?->format('h:i A') }}
                                 </td>
                                 <td class="px-5 py-4">
                                     <div class="flex items-center justify-end gap-2">
-                                        <button class="rounded-lg p-2 text-[var(--muted)] hover:bg-gray-100 hover:text-[var(--ink)]" title="View">
+                                        <a href="{{ route('tenant.orders.show', $order) }}" class="rounded-lg p-2 text-[var(--muted)] hover:bg-gray-100 hover:text-[var(--ink)]" title="View">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                             </svg>
-                                        </button>
-                                        @if ($canEdit)
-                                            <button class="rounded-lg p-2 text-[var(--muted)] hover:bg-gray-100 hover:text-[var(--ink)]" title="Edit">
+                                        </a>
+                                        @if ($canUpdateOrders)
+                                            <a href="{{ route('tenant.orders.edit', $order) }}" class="rounded-lg p-2 text-[var(--muted)] hover:bg-gray-100 hover:text-[var(--ink)]" title="Edit">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                     <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                 </svg>
-                                            </button>
+                                            </a>
+                                        @endif
+                                        @if ($canDeleteOrders)
+                                            <form method="POST" action="{{ route('tenant.orders.destroy', $order) }}" onsubmit="return confirm('Delete this order?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="rounded-lg p-2 text-red-600 hover:bg-red-50" title="Delete">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-7 0h8" />
+                                                    </svg>
+                                                </button>
+                                            </form>
                                         @endif
                                     </div>
                                 </td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="8" class="px-5 py-8 text-center text-sm text-[var(--muted)]">
+                                    No orders found for the current filters.
+                                </td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>
 
             <div class="flex items-center justify-between border-t border-[var(--line)] px-5 py-3">
-                <p class="text-sm text-[var(--muted)]">Showing 5 of 24 orders</p>
+                <p class="text-sm text-[var(--muted)]">Showing {{ $orders->count() }} of {{ $orders->total() }} orders</p>
                 <div class="flex gap-2">
-                    <button class="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm hover:bg-gray-50">Previous</button>
-                    <button class="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm hover:bg-gray-50">Next</button>
+                    @if ($orders->previousPageUrl())
+                        <a href="{{ $orders->previousPageUrl() }}" class="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm hover:bg-gray-50">Previous</a>
+                    @else
+                        <span class="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm text-[var(--muted)]">Previous</span>
+                    @endif
+                    @if ($orders->nextPageUrl())
+                        <a href="{{ $orders->nextPageUrl() }}" class="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm hover:bg-gray-50">Next</a>
+                    @else
+                        <span class="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm text-[var(--muted)]">Next</span>
+                    @endif
                 </div>
             </div>
         </div>

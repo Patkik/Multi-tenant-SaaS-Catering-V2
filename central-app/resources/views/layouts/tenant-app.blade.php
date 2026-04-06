@@ -47,7 +47,16 @@
         }
 
         .nav-item {
-            @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-radius: 0.5rem;
+            padding: 0.625rem 0.75rem;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 200ms;
         }
 
         .nav-item:hover {
@@ -61,11 +70,19 @@
         }
 
         .nav-item .nav-icon {
-            @apply w-5 h-5 flex-shrink-0;
+            width: 1.25rem;
+            height: 1.25rem;
+            flex-shrink: 0;
         }
 
         .badge {
-            @apply inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-semibold rounded-full;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.125rem 0.5rem;
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 9999px;
         }
 
         .badge-brand { background: var(--brand-light); color: var(--brand); }
@@ -88,10 +105,19 @@
 
         /* Mobile sidebar */
         .sidebar-overlay {
-            @apply fixed inset-0 bg-black/50 z-40 lg:hidden;
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 40;
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.3s, visibility 0.3s;
+        }
+
+        @media (min-width: 1024px) {
+            .sidebar-overlay {
+                display: none;
+            }
         }
 
         .sidebar-overlay.open {
@@ -100,11 +126,35 @@
         }
 
         .sidebar {
-            @apply fixed lg:relative inset-y-0 left-0 z-50 w-64 transform -translate-x-full lg:translate-x-0 transition-transform duration-300;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 50;
+            width: 16rem;
+            transform: translateX(-100%);
+            transition: transform 300ms;
+        }
+
+        @media (min-width: 1024px) {
+            .sidebar {
+                position: relative;
+                transform: translateX(0);
+            }
+        }
         }
 
         .sidebar.open {
             transform: translateX(0);
+        }
+
+        .tenant-toast {
+            animation: toast-in 220ms ease-out;
+        }
+
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
     @stack('styles')
@@ -127,7 +177,7 @@
             ],
             'orders' => [
                 'name' => 'Orders',
-                'route' => 'tenant.orders',
+                'route' => 'tenant.orders.index',
                 'icon' => 'clipboard-list',
                 'roles' => ['admin', 'manager', 'staff', 'cashier'],
                 'badge' => 12,
@@ -218,9 +268,11 @@
             'arrow-right-on-rectangle' => '<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/>',
         ];
 
-        function renderIcon($icons, $name, $class = '') {
-            $path = $icons[$name] ?? '';
-            return '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="' . $class . '">' . $path . '</svg>';
+        if (! function_exists('renderIcon')) {
+            function renderIcon($icons, $name, $class = '') {
+                $path = $icons[$name] ?? '';
+                return '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="' . $class . '">' . $path . '</svg>';
+            }
         }
     @endphp
 
@@ -234,9 +286,9 @@
                 <!-- Logo & Brand -->
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand)] to-[var(--brand-deep)] text-lg text-white">🍽</div>
+                        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand)] to-[var(--brand-deep)] text-base text-white">🍽</div>
                         <div>
-                            <p class="font-bold text-[var(--ink)]">CaterFlow</p>
+                            <p class="font-bold text-sm text-[var(--ink)]">CaterFlow</p>
                             <p class="text-[10px] text-[var(--muted)]">{{ $tenant?->name ?? 'Tenant' }}</p>
                         </div>
                     </div>
@@ -381,6 +433,12 @@
 
             <!-- Page Content -->
             <main class="flex-1 p-4 lg:p-6">
+                @if (session('tenant_deactivated'))
+                    <div id="tenant-deactivated-toast" class="tenant-toast mb-4 rounded-xl border border-[#dc2626]/30 bg-[#fee2e2] px-4 py-3 text-sm font-medium text-[#7f1d1d]">
+                        Admin has deactivated your domain.
+                    </div>
+                @endif
+
                 @yield('content')
             </main>
         </div>
@@ -410,6 +468,13 @@
                 });
             }
         });
+
+        const deactivatedToast = document.getElementById('tenant-deactivated-toast');
+        if (deactivatedToast) {
+            setTimeout(() => {
+                deactivatedToast.remove();
+            }, 5000);
+        }
     </script>
     @stack('scripts')
 </body>

@@ -1,11 +1,13 @@
 <?php
 
 use App\Exceptions\TenantProvisioningException;
+use App\Http\Controllers\Tenant\OrdersController;
 use App\Models\Feature;
 use App\Models\RoleTemplate;
 use App\Models\RoleTemplateApplication;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\TenantAccountRegistrationService;
 use App\Services\TenantProvisioningService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,22 +15,190 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
 $centralHost = strtolower((string) env('CENTRAL_APP_HOST', 'localhost'));
 
-$isCentralRequest = static function (Request $request) use ($centralHost): bool {
+$isLocalLoopbackHost = static function (string $host): bool {
+    $normalizedHost = strtolower(trim($host, '[]'));
+
+    return $normalizedHost === 'localhost'
+        || $normalizedHost === '127.0.0.1'
+        || $normalizedHost === '::1';
+};
+
+$isCentralRequest = static function (Request $request) use ($centralHost, $isLocalLoopbackHost): bool {
     $host = strtolower($request->getHost());
-    // Treat 127.0.0.1 and localhost as equivalent for local development
-    if ($centralHost === 'localhost' && ($host === '127.0.0.1' || $host === 'localhost')) {
+    // Treat loopback hosts as equivalent for local development.
+    if ($centralHost === 'localhost' && $isLocalLoopbackHost($host)) {
         return true;
     }
     return $host === $centralHost;
 };
 
-$resolveTenantFromRequest = static function (Request $request): ?Tenant {
-    return Tenant::query()->where('domain', $request->getHttpHost())->first();
+$normalizeHostname = static function (string $value): string {
+    $candidate = strtolower(trim($value));
+
+    if ($candidate === '') {
+        return '';
+    }
+
+    $candidateWithScheme = preg_match('/\A[a-z][a-z0-9+\-.]*:\/\//i', $candidate) === 1
+        ? $candidate
+        : sprintf('//%s', $candidate);
+
+    $parsedHost = parse_url($candidateWithScheme, PHP_URL_HOST);
+
+    if (is_string($parsedHost) && $parsedHost !== '') {
+        return trim($parsedHost, '[]');
+    }
+
+    // Fallback parser for non-standard host strings.
+    $candidate = (string) preg_replace('/\A[a-z][a-z0-9+\-.]*:\/\//i', '', $candidate);
+    $candidate = (string) preg_replace('/[\/?#].*\z/', '', $candidate);
+
+    if ($candidate === '') {
+        return '';
+    }
+
+    if (str_starts_with($candidate, '[')) {
+        $ipv6End = strpos($candidate, ']');
+
+        if ($ipv6End !== false) {
+            return substr($candidate, 1, $ipv6End - 1);
+        }
+    }
+
+    return explode(':', $candidate, 2)[0];
+};
+
+$resolveLocalDevPort = static function (?Request $request = null): ?int {
+    $port = $request?->getPort();
+
+    if (is_int($port) && $port > 0) {
+        return $port;
+    }
+
+    $appUrl = (string) config('app.url', '');
+    $appUrlPort = parse_url($appUrl, PHP_URL_PORT);
+
+    return is_int($appUrlPort) && $appUrlPort > 0 ? $appUrlPort : null;
+};
+
+$extractExplicitPort = static function (string $value): ?int {
+    $candidate = strtolower(trim($value));
+
+    if ($candidate === '') {
+        return null;
+    }
+
+    $candidateWithScheme = preg_match('/\A[a-z][a-z0-9+\-.]*:\/\//i', $candidate) === 1
+        ? $candidate
+        : sprintf('//%s', $candidate);
+
+    $parsedPort = parse_url($candidateWithScheme, PHP_URL_PORT);
+
+    return is_int($parsedPort) && $parsedPort > 0 ? $parsedPort : null;
+};
+
+$formatHostWithOptionalPort = static function (string $host, ?int $port = null): string {
+    $normalizedHost = trim($host, '[]');
+    $hostForOutput = str_contains($normalizedHost, ':')
+        ? sprintf('[%s]', $normalizedHost)
+        : $normalizedHost;
+
+    return $port === null ? $hostForOutput : sprintf('%s:%d', $hostForOutput, $port);
+};
+
+$normalizeLocalhostTenantDomain = static function (string $domain, ?Request $request = null) use ($resolveLocalDevPort, $isLocalLoopbackHost, $formatHostWithOptionalPort): string {
+    $trimmedDomain = trim($domain);
+
+    if ($trimmedDomain === '') {
+        return $trimmedDomain;
+    }
+
+    $base = preg_match('/\Ahttps?:\/\//i', $trimmedDomain) === 1
+        ? $trimmedDomain
+        : sprintf('http://%s', $trimmedDomain);
+
+    $parts = parse_url($base);
+
+    if (! is_array($parts)) {
+        return $trimmedDomain;
+    }
+
+    $host = strtolower((string) ($parts['host'] ?? ''));
+
+    if ($host === '') {
+        return $trimmedDomain;
+    }
+
+    $isLocalhost = $isLocalLoopbackHost($host)
+        || str_ends_with($host, '.localhost');
+
+    if (! $isLocalhost) {
+        return $trimmedDomain;
+    }
+
+    $existingPort = isset($parts['port']) ? (int) $parts['port'] : null;
+
+    // Preserve custom localhost ports; only correct empty/defaulted legacy values.
+    if ($existingPort !== null && $existingPort !== 8080) {
+        return $formatHostWithOptionalPort($host, $existingPort);
+    }
+
+    $activePort = $resolveLocalDevPort($request);
+
+    if ($activePort === null) {
+        return $formatHostWithOptionalPort($host, $existingPort);
+    }
+
+    return $formatHostWithOptionalPort($host, $activePort);
+};
+
+$resolveTenantFromRequest = static function (Request $request) use ($normalizeHostname, $extractExplicitPort): ?Tenant {
+    $requestHttpHost = strtolower(trim((string) $request->getHttpHost()));
+    $requestHost = $normalizeHostname($requestHttpHost);
+
+    if ($requestHost === '') {
+        return null;
+    }
+
+    $tenant = Tenant::query()->whereRaw('LOWER(domain) = ?', [$requestHttpHost])->first();
+
+    if ($tenant !== null) {
+        return $tenant;
+    }
+
+    $matches = Tenant::query()
+        ->whereRaw('LOWER(domain) LIKE ?', [sprintf('%%%s%%', $requestHost)])
+        ->get()
+        ->filter(static fn (Tenant $candidate): bool => $normalizeHostname((string) $candidate->domain) === $requestHost)
+        ->values();
+
+    if ($matches->count() <= 1) {
+        return $matches->first();
+    }
+
+    $requestPort = $extractExplicitPort($requestHttpHost);
+
+    if ($requestPort !== null) {
+        $portMatched = $matches
+            ->filter(static fn (Tenant $candidate): bool => $extractExplicitPort((string) $candidate->domain) === $requestPort)
+            ->values();
+
+        return $portMatched->count() === 1 ? $portMatched->first() : null;
+    }
+
+    $withoutExplicitPort = $matches
+        ->filter(static fn (Tenant $candidate): bool => $extractExplicitPort((string) $candidate->domain) === null)
+        ->values();
+
+    return $withoutExplicitPort->count() === 1 ? $withoutExplicitPort->first() : null;
 };
 
 $tenantAppUrl = static function (Tenant $tenant): string {
@@ -45,8 +215,32 @@ $tenantLoginUrl = static function (Tenant $tenant): string {
     return rtrim($base, '/').'/auth/tenant/login';
 };
 
+$resolveTenantRuntimeConnection = static function (Tenant $tenant): string {
+    $runtimeConnection = (string) config('tenancy.runtime_connection', config('database.default'));
+    $runtimeConnectionAlias = (string) config('tenancy.runtime_connection_alias', 'tenant_runtime');
+
+    $runtimeConnectionConfig = config("database.connections.{$runtimeConnection}");
+
+    if (! is_array($runtimeConnectionConfig)) {
+        throw new RuntimeException(sprintf('Runtime tenant connection "%s" is not configured.', $runtimeConnection));
+    }
+
+    $runtimeConnectionConfig['database'] = (string) $tenant->database_name;
+
+    config(["database.connections.{$runtimeConnectionAlias}" => $runtimeConnectionConfig]);
+
+    DB::purge($runtimeConnectionAlias);
+    DB::connection($runtimeConnectionAlias)->getPdo();
+
+    return $runtimeConnectionAlias;
+};
+
 $centralHomeUrl = static function () use ($centralHost): string {
     return sprintf('http://%s/', $centralHost);
+};
+
+$normalizeEmail = static function (string $email): string {
+    return mb_strtolower(trim($email));
 };
 
 Route::get('/auth/central/login', function (Request $request) use ($isCentralRequest) {
@@ -115,6 +309,8 @@ Route::get('/auth/tenant/login', function (Request $request) use ($isCentralRequ
         return abort(404);
     }
 
+    $isTenantActive = (bool) ($tenant->is_active ?? true);
+
     return view('auth-login', [
         'title' => 'Tenant App Login',
         'subtitle' => sprintf('Sign in to continue to %s operations.', $tenant->name),
@@ -131,8 +327,52 @@ Route::get('/auth/tenant/login', function (Request $request) use ($isCentralRequ
         'submitLabel' => 'Sign In to Tenant',
         'showRegisterLink' => true,
         'registerUrl' => route('auth.tenant.register'),
+        'showForgotPasswordLink' => true,
+        'forgotPasswordUrl' => route('auth.tenant.forgot-password'),
+        'isTenantActive' => $isTenantActive,
     ]);
 })->name('auth.tenant.login');
+
+Route::get('/auth/tenant/forgot-password', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $tenant = $resolveTenantFromRequest($request);
+
+    if ($tenant === null) {
+        return abort(404);
+    }
+
+    return view('auth-forgot-password', [
+        'title' => 'Reset Password',
+        'subtitle' => sprintf('%s - Enter your email to reset your password.', $tenant->name),
+        'action' => route('auth.tenant.forgot-password.submit'),
+        'emailLabel' => 'Staff Email',
+        'submitLabel' => 'Send Reset Link',
+        'loginUrl' => route('auth.tenant.login'),
+    ]);
+})->name('auth.tenant.forgot-password');
+
+Route::post('/auth/tenant/forgot-password', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $tenant = $resolveTenantFromRequest($request);
+
+    if ($tenant === null) {
+        return abort(404);
+    }
+
+    $request->validate([
+        'email' => ['required', 'email'],
+    ]);
+
+    // Simulated success behavior for forgot password.
+    return redirect()->route('auth.tenant.login')
+        ->with('status', 'If your email exists in our system, you will receive a password reset link shortly.');
+})->name('auth.tenant.forgot-password.submit');
 
 // Tenant Registration Routes
 Route::get('/auth/tenant/register', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest) {
@@ -146,6 +386,14 @@ Route::get('/auth/tenant/register', function (Request $request) use ($isCentralR
         return abort(404);
     }
 
+    if (! (bool) ($tenant->is_active ?? true)) {
+        return redirect()->route('auth.tenant.login')
+            ->with('tenant_deactivated', true)
+            ->withErrors([
+                'email' => 'This domain has been deactivated by the administrator.',
+            ]);
+    }
+
     return view('auth-register', [
         'title' => 'Create Account',
         'subtitle' => sprintf('Register to join %s.', $tenant->name),
@@ -155,7 +403,7 @@ Route::get('/auth/tenant/register', function (Request $request) use ($isCentralR
     ]);
 })->name('auth.tenant.register');
 
-Route::post('/auth/tenant/register', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $tenantAppUrl) {
+Route::post('/auth/tenant/otp/send', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $normalizeEmail) {
     if ($isCentralRequest($request)) {
         return abort(404);
     }
@@ -166,9 +414,195 @@ Route::post('/auth/tenant/register', function (Request $request) use ($isCentral
         return abort(404);
     }
 
-    // Verify OTP was completed
-    if (!$request->input('otp_verified')) {
-        return back()->withInput()->withErrors(['otp' => 'Email verification required.']);
+    if (! (bool) ($tenant->is_active ?? true)) {
+        return response()->json([
+            'message' => 'This domain has been deactivated by the administrator.',
+        ], 422);
+    }
+
+    $validated = $request->validate([
+        'email' => ['required', 'email', 'max:255'],
+    ]);
+
+    $email = $normalizeEmail((string) $validated['email']);
+    $tenantDomain = strtolower((string) $tenant->domain);
+    $sendIpKey = sprintf('tenant-otp-send:ip:%s:%s', $tenantDomain, $request->ip());
+    $sendEmailKey = sprintf('tenant-otp-send:email:%s:%s', $tenantDomain, $email);
+
+    if (RateLimiter::tooManyAttempts($sendIpKey, 10) || RateLimiter::tooManyAttempts($sendEmailKey, 5)) {
+        $retryAfterSeconds = max(
+            RateLimiter::availableIn($sendIpKey),
+            RateLimiter::availableIn($sendEmailKey)
+        );
+
+        return response()->json([
+            'message' => sprintf('Too many verification code requests. Please retry in %d seconds.', max(1, $retryAfterSeconds)),
+        ], 429);
+    }
+
+    RateLimiter::hit($sendIpKey, 600);
+    RateLimiter::hit($sendEmailKey, 600);
+
+    $configuredMockOtp = (string) config('tenancy.mock_otp_code', '');
+    $isMockOtpEnabled = app()->environment(['local', 'testing'])
+        && preg_match('/^\d{6}$/', $configuredMockOtp) === 1;
+    $otp = $isMockOtpEnabled
+        ? $configuredMockOtp
+        : str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+    $request->session()->put('tenant_registration_otp_challenge', [
+        'email' => $email,
+        'otp_hash' => Hash::make($otp),
+        'expires_at' => now()->addMinutes(10)->toIso8601String(),
+        'tenant_id' => (int) $tenant->getKey(),
+        'tenant_domain' => $tenantDomain,
+    ]);
+    $request->session()->forget('tenant_registration_otp_verified_email');
+
+    try {
+        Mail::raw(
+            sprintf('Your verification code is %s. It expires in 10 minutes.', $otp),
+            static function ($message) use ($email): void {
+                $message->to($email)->subject('Your verification code');
+            }
+        );
+    } catch (\Throwable $exception) {
+        Log::warning('Tenant registration OTP delivery failed.', [
+            'tenant_domain' => $tenantDomain,
+            'error_type' => $exception::class,
+        ]);
+
+        return response()->json([
+            'message' => 'Unable to send verification code right now. Please try again in a few moments.',
+        ], 503);
+    }
+
+    $responsePayload = [
+        'message' => 'Verification code sent.',
+    ];
+
+    if ($isMockOtpEnabled) {
+        $responsePayload['mock_code'] = $otp;
+    }
+
+    return response()->json($responsePayload);
+})->name('auth.tenant.otp.send');
+
+Route::post('/auth/tenant/otp/verify', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $normalizeEmail) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $tenant = $resolveTenantFromRequest($request);
+
+    if ($tenant === null) {
+        return abort(404);
+    }
+
+    if (! (bool) ($tenant->is_active ?? true)) {
+        return response()->json([
+            'message' => 'This domain has been deactivated by the administrator.',
+        ], 422);
+    }
+
+    $validated = $request->validate([
+        'email' => ['required', 'email', 'max:255'],
+        'code' => ['required', 'digits:6'],
+    ]);
+
+    $email = $normalizeEmail((string) $validated['email']);
+    $tenantDomain = strtolower((string) $tenant->domain);
+    $verifyIpKey = sprintf('tenant-otp-verify:ip:%s:%s', $tenantDomain, $request->ip());
+    $verifyEmailKey = sprintf('tenant-otp-verify:email:%s:%s', $tenantDomain, $email);
+
+    if (RateLimiter::tooManyAttempts($verifyIpKey, 30) || RateLimiter::tooManyAttempts($verifyEmailKey, 8)) {
+        $retryAfterSeconds = max(
+            RateLimiter::availableIn($verifyIpKey),
+            RateLimiter::availableIn($verifyEmailKey)
+        );
+
+        return response()->json([
+            'message' => sprintf('Too many verification attempts. Please retry in %d seconds.', max(1, $retryAfterSeconds)),
+        ], 429);
+    }
+
+    RateLimiter::hit($verifyIpKey, 600);
+    RateLimiter::hit($verifyEmailKey, 600);
+
+    $challenge = $request->session()->get('tenant_registration_otp_challenge');
+
+    if (! is_array($challenge)) {
+        return response()->json([
+            'message' => 'No OTP challenge found. Please request a new code.',
+        ], 422);
+    }
+
+    $challengeEmail = $normalizeEmail((string) ($challenge['email'] ?? ''));
+    $otpHash = (string) ($challenge['otp_hash'] ?? '');
+    $expiresAt = isset($challenge['expires_at']) ? \Illuminate\Support\Carbon::parse((string) $challenge['expires_at']) : null;
+    $challengeTenantId = (int) ($challenge['tenant_id'] ?? 0);
+    $challengeTenantDomain = strtolower(trim((string) ($challenge['tenant_domain'] ?? '')));
+    $tenantId = (int) $tenant->getKey();
+
+    if (
+        $challengeEmail !== $email
+        || $otpHash === ''
+        || ! $expiresAt
+        || now()->greaterThan($expiresAt)
+        || $challengeTenantId !== $tenantId
+        || $challengeTenantDomain === ''
+        || $challengeTenantDomain !== $tenantDomain
+    ) {
+        $request->session()->forget('tenant_registration_otp_challenge');
+
+        return response()->json([
+            'message' => 'OTP challenge expired or invalid. Please request a new code.',
+        ], 422);
+    }
+
+    if (! Hash::check((string) $validated['code'], $otpHash)) {
+        return response()->json([
+            'message' => 'Invalid verification code.',
+        ], 422);
+    }
+
+    $request->session()->put('tenant_registration_otp_verified_email', [
+        'email' => $email,
+        'tenant_id' => $tenantId,
+        'tenant_domain' => $tenantDomain,
+        'verified_at' => now()->toIso8601String(),
+    ]);
+    $request->session()->forget('tenant_registration_otp_challenge');
+    RateLimiter::clear($verifyEmailKey);
+
+    return response()->json([
+        'message' => 'Email verified.',
+    ]);
+})->name('auth.tenant.otp.verify');
+
+Route::post('/auth/tenant/register', function (Request $request, TenantAccountRegistrationService $tenantAccountRegistrationService) use ($isCentralRequest, $resolveTenantFromRequest, $tenantAppUrl, $normalizeEmail) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $tenant = $resolveTenantFromRequest($request);
+
+    if ($tenant === null) {
+        return abort(404);
+    }
+
+    if (! (bool) ($tenant->is_active ?? true)) {
+        return redirect()->route('auth.tenant.login')
+            ->with('tenant_deactivated', true)
+            ->withErrors([
+                'email' => 'This domain has been deactivated by the administrator.',
+            ]);
+    }
+
+    if ((string) ($tenant->provisioning_status ?? 'provisioning') !== 'ready') {
+        return back()->withInput()->withErrors([
+            'email' => 'Tenant setup is still in progress. Please try again in a few minutes.',
+        ]);
     }
 
     $validated = $request->validate([
@@ -194,6 +628,35 @@ Route::post('/auth/tenant/register', function (Request $request) use ($isCentral
         'password.confirmed' => 'Passwords do not match.',
     ]);
 
+    $verifiedProof = $request->session()->get('tenant_registration_otp_verified_email');
+    $verifiedEmail = '';
+    $verifiedTenantId = 0;
+    $verifiedTenantDomain = '';
+
+    if (is_array($verifiedProof)) {
+        $verifiedEmail = $normalizeEmail((string) ($verifiedProof['email'] ?? ''));
+        $verifiedTenantId = (int) ($verifiedProof['tenant_id'] ?? 0);
+        $verifiedTenantDomain = strtolower(trim((string) ($verifiedProof['tenant_domain'] ?? '')));
+    }
+
+    $requestEmail = $normalizeEmail((string) $validated['email']);
+    $tenantId = (int) $tenant->getKey();
+    $tenantDomain = strtolower((string) $tenant->domain);
+
+    if (
+        $verifiedEmail === ''
+        || $verifiedEmail !== $requestEmail
+        || $verifiedTenantId !== $tenantId
+        || $verifiedTenantDomain === ''
+        || $verifiedTenantDomain !== $tenantDomain
+    ) {
+        $request->session()->forget('tenant_registration_otp_verified_email');
+
+        return back()->withInput()->withErrors([
+            'otp' => 'Email verification required.',
+        ]);
+    }
+
     // Store formatted phone with country code
     $phoneFormats = [
         'us' => '+1', 'uk' => '+44', 'ph' => '+63', 'au' => '+61',
@@ -208,8 +671,49 @@ Route::post('/auth/tenant/register', function (Request $request) use ($isCentral
     $role = $validated['role'];
     $requiresApproval = ($role === 'admin');
 
-    // TODO: Store user in tenant database with pending status if admin
-    // For now, authenticate them into the session (non-admin roles)
+    try {
+        $registrationResult = $tenantAccountRegistrationService->register($tenant, [
+            'email' => (string) $validated['email'],
+            'password' => (string) $validated['password'],
+            'role' => $role,
+            'full_name' => $fullName,
+        ]);
+    } catch (RuntimeException $exception) {
+        Log::warning('tenant_registration_runtime_exception', [
+            'tenant_id' => $tenantId,
+            'tenant_domain' => (string) $tenant->domain,
+            'exception_class' => $exception::class,
+            'exception_message' => $exception->getMessage(),
+            'exception_code' => $exception->getCode(),
+        ]);
+
+        if (str_contains($exception->getMessage(), 'already exists')) {
+            return back()->withInput()->withErrors([
+                'email' => 'An account with this email already exists.',
+            ]);
+        }
+
+        return back()->withInput()->withErrors([
+            'email' => 'Unable to create account right now. Please try again in a few moments.',
+        ]);
+    } catch (\Throwable $exception) {
+        Log::error('tenant_registration_unhandled_exception', [
+            'tenant_id' => $tenantId,
+            'tenant_domain' => (string) $tenant->domain,
+            'exception_class' => $exception::class,
+            'exception_message' => $exception->getMessage(),
+            'exception_code' => $exception->getCode(),
+        ]);
+
+        return back()->withInput()->withErrors([
+            'email' => 'Unable to create account right now. Please try again in a few moments.',
+        ]);
+    }
+
+    $request->session()->forget([
+        'tenant_registration_otp_verified_email',
+        'tenant_registration_otp_challenge',
+    ]);
     
     if ($requiresApproval) {
         // Admin role requires approval - show pending page
@@ -220,6 +724,7 @@ Route::post('/auth/tenant/register', function (Request $request) use ($isCentral
             'name' => $fullName,
             'role' => $role,
             'phone' => $phoneWithCode,
+            'status' => $registrationResult['status'],
             'created_at' => now()->toIso8601String(),
         ]);
         
@@ -227,10 +732,46 @@ Route::post('/auth/tenant/register', function (Request $request) use ($isCentral
     }
 
     // Non-admin roles - activate immediately
+    $sessionTenantRole = 'staff';
+    $sessionTenantEmail = $requestEmail;
+
+    try {
+        $registrationConnection = (string) ($registrationResult['connection'] ?? '');
+
+        if ($registrationConnection !== '' && Schema::connection($registrationConnection)->hasTable('users')) {
+            $usersHasRoleColumn = Schema::connection($registrationConnection)->hasColumn('users', 'role');
+            $selectColumns = ['email'];
+
+            if ($usersHasRoleColumn) {
+                $selectColumns[] = 'role';
+            }
+
+            $persistedUser = DB::connection($registrationConnection)
+                ->table('users')
+                ->whereRaw('LOWER(email) = ?', [$requestEmail])
+                ->latest('id')
+                ->first($selectColumns);
+
+            if ($persistedUser !== null) {
+                $sessionTenantEmail = (string) ($persistedUser->email ?? $requestEmail);
+
+                if ($usersHasRoleColumn) {
+                    $persistedRole = (string) ($persistedUser->role ?? '');
+
+                    if (in_array($persistedRole, ['staff', 'cashier', 'manager', 'admin'], true)) {
+                        $sessionTenantRole = $persistedRole;
+                    }
+                }
+            }
+        }
+    } catch (\Throwable) {
+        // Keep safe defaults if persisted role lookup is unavailable.
+    }
+
     $request->session()->regenerate();
     $request->session()->put('tenant_authenticated_domain', (string) $tenant->domain);
-    $request->session()->put('tenant_role', $role);
-    $request->session()->put('tenant_user_email', (string) $validated['email']);
+    $request->session()->put('tenant_role', $sessionTenantRole);
+    $request->session()->put('tenant_user_email', $sessionTenantEmail);
     $request->session()->put('tenant_user_name', $fullName);
     $request->session()->put('tenant_user_first_name', $validated['first_name']);
     $request->session()->put('tenant_user_last_name', $validated['last_name']);
@@ -262,7 +803,7 @@ Route::get('/auth/tenant/register/pending', function (Request $request) use ($is
     ]);
 })->name('auth.tenant.register.pending');
 
-Route::post('/auth/tenant/login', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $tenantAppUrl) {
+Route::post('/auth/tenant/login', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $tenantAppUrl, $resolveTenantRuntimeConnection, $normalizeEmail) {
     if ($isCentralRequest($request)) {
         return abort(404);
     }
@@ -273,24 +814,61 @@ Route::post('/auth/tenant/login', function (Request $request) use ($isCentralReq
         return abort(404);
     }
 
+    if (! (bool) ($tenant->is_active ?? true)) {
+        return back()->withInput($request->only('email', 'role'))
+            ->with('tenant_deactivated', true)
+            ->withErrors([
+                'email' => 'This domain has been deactivated by the administrator.',
+            ]);
+    }
+
     $credentials = $request->validate([
         'email' => ['required', 'email'],
         'password' => ['required', 'string'],
-        'role' => ['required', 'string', 'in:admin,manager,staff,cashier'],
     ]);
+    $normalizedEmail = $normalizeEmail((string) $credentials['email']);
 
-    $expectedTenantPassword = (string) env('TENANT_AUTH_PASSWORD', 'tenant123!');
+    try {
+        $connectionName = $resolveTenantRuntimeConnection($tenant);
+    } catch (\Throwable) {
+        return back()->withInput($request->only('email', 'role'))->withErrors([
+            'email' => 'Unable to authenticate right now. Please try again shortly.',
+        ]);
+    }
 
-    if (! hash_equals($expectedTenantPassword, (string) $credentials['password'])) {
-        return back()->withInput(['email' => $credentials['email']])->withErrors([
+    $usersHasRoleColumn = Schema::connection($connectionName)->hasColumn('users', 'role');
+    $usersHasIsActiveColumn = Schema::connection($connectionName)->hasColumn('users', 'is_active');
+
+    $selectColumns = ['email', 'password'];
+
+    if ($usersHasRoleColumn) {
+        $selectColumns[] = 'role';
+    }
+
+    if ($usersHasIsActiveColumn) {
+        $selectColumns[] = 'is_active';
+    }
+
+    $resolvedUser = DB::connection($connectionName)
+        ->table('users')
+        ->whereRaw('LOWER(email) = ?', [$normalizedEmail])
+        ->first($selectColumns);
+
+    if (
+        ! $resolvedUser
+        || ($usersHasIsActiveColumn && ! (bool) ($resolvedUser->is_active ?? false))
+        || ! is_string($resolvedUser->password ?? null)
+        || ! Hash::check((string) $credentials['password'], (string) $resolvedUser->password)
+    ) {
+        return back()->withInput(['email' => $normalizedEmail])->withErrors([
             'email' => 'Invalid tenant credentials.',
         ]);
     }
 
     $request->session()->regenerate();
     $request->session()->put('tenant_authenticated_domain', (string) $tenant->domain);
-    $request->session()->put('tenant_role', (string) $credentials['role']);
-    $request->session()->put('tenant_user_email', (string) $credentials['email']);
+    $request->session()->put('tenant_role', (string) ($resolvedUser->role ?? 'staff'));
+    $request->session()->put('tenant_user_email', (string) ($resolvedUser->email ?? $normalizedEmail));
 
     return redirect()->to($tenantAppUrl($tenant));
 })->name('auth.tenant.login.submit');
@@ -306,9 +884,16 @@ Route::post('/auth/tenant/logout', function (Request $request) use ($isCentralRe
         return abort(404);
     }
 
-    $request->session()->forget('tenant_authenticated_domain');
-    $request->session()->forget('tenant_role');
-    $request->session()->forget('tenant_user_email');
+    $request->session()->forget([
+        'tenant_authenticated_domain',
+        'tenant_role',
+        'tenant_user_email',
+        'tenant_user_name',
+        'tenant_user_first_name',
+        'tenant_user_last_name',
+        'tenant_user_middle_initial',
+        'tenant_user_phone',
+    ]);
     $request->session()->invalidate();
     $request->session()->regenerateToken();
 
@@ -396,7 +981,7 @@ Route::get('/', function (Request $request) use ($isCentralRequest, $safe) {
 })->name('central.dashboard');
 
 // Tenants management page
-Route::get('/tenants', function (Request $request) use ($isCentralRequest, $safe) {
+Route::get('/tenants', function (Request $request) use ($isCentralRequest, $safe, $resolveLocalDevPort) {
     if (! $isCentralRequest($request)) {
         return redirect()->route('auth.tenant.login');
     }
@@ -411,7 +996,7 @@ Route::get('/tenants', function (Request $request) use ($isCentralRequest, $safe
         ? $safe(
             static fn (): Collection => Tenant::query()
                 ->latest('id')
-                ->get(['id', 'name', 'domain', 'database_name', 'plan_code', 'provisioning_status', 'created_at']),
+                ->get(['id', 'name', 'domain', 'database_name', 'plan_code', 'is_active', 'provisioning_status', 'created_at']),
             collect()
         )
         : collect();
@@ -419,10 +1004,11 @@ Route::get('/tenants', function (Request $request) use ($isCentralRequest, $safe
     return view('central-tenants', [
         'databaseOnline' => (bool) $databaseOnline,
         'tenants' => $tenants,
+        'defaultTenantDomainPort' => $resolveLocalDevPort($request),
     ]);
 })->name('central.tenants');
 
-Route::post('/tenants/create', function (Request $request, TenantProvisioningService $tenantProvisioningService) use ($isCentralRequest): RedirectResponse {
+Route::post('/tenants/create', function (Request $request, TenantProvisioningService $tenantProvisioningService) use ($isCentralRequest, $normalizeLocalhostTenantDomain): RedirectResponse {
     if (! $isCentralRequest($request)) {
         return redirect()->route('auth.tenant.login');
     }
@@ -488,6 +1074,7 @@ Route::post('/tenants/create', function (Request $request, TenantProvisioningSer
                     $table->string('database_name')->unique();
                     $table->string('plan_code')->nullable();
                     $table->json('plan_entitlements')->nullable();
+                    $table->boolean('is_active')->default(true);
                     $table->string('provisioning_status')->default('provisioning');
                     $table->text('provisioning_error')->nullable();
                     $table->timestamp('provisioned_at')->nullable();
@@ -495,6 +1082,10 @@ Route::post('/tenants/create', function (Request $request, TenantProvisioningSer
                 });
             } else {
                 $schema->table('tenants', function (Blueprint $table) use ($schema): void {
+                    if (! $schema->hasColumn('tenants', 'is_active')) {
+                        $table->boolean('is_active')->default(true)->after('plan_entitlements');
+                    }
+
                     if (! $schema->hasColumn('tenants', 'provisioning_status')) {
                         $table->string('provisioning_status')->default('provisioning');
                     }
@@ -514,6 +1105,10 @@ Route::post('/tenants/create', function (Request $request, TenantProvisioningSer
                 ->with('tenant_create_error', 'Failed to prepare central schema for tenant validation. Run central migrations and retry.');
         }
     }
+
+    $request->merge([
+        'domain' => $normalizeLocalhostTenantDomain((string) $request->input('domain', ''), $request),
+    ]);
 
     $validated = $request->validate([
         'name' => ['required', 'string', 'max:255'],
@@ -546,6 +1141,28 @@ Route::post('/tenants/create', function (Request $request, TenantProvisioningSer
     return redirect('/')
         ->with('tenant_create_success', sprintf('Tenant "%s" created and database "%s" provisioned.', $tenant->name, $tenant->database_name));
 })->name('tenants.create');
+
+Route::patch('/tenants/{tenant}', function (Request $request, Tenant $tenant) use ($isCentralRequest): RedirectResponse {
+    if (! $isCentralRequest($request)) {
+        return redirect()->route('auth.tenant.login');
+    }
+
+    if (! $request->session()->get('central_authenticated', false)) {
+        return redirect()->route('auth.central.login');
+    }
+
+    $payload = $request->validate([
+        'plan_code' => ['required', 'string', 'in:starter,growth,enterprise'],
+        'is_active' => ['required', 'boolean'],
+    ]);
+
+    $tenant->fill([
+        'plan_code' => trim((string) $payload['plan_code']),
+        'is_active' => (bool) $payload['is_active'],
+    ])->save();
+
+    return redirect()->route('central.tenants')->with('success', sprintf('Tenant "%s" updated.', $tenant->name));
+})->name('central.tenants.update');
 
 Route::get('/users', function (Request $request) use ($isCentralRequest) {
     if (! $isCentralRequest($request)) {
@@ -616,10 +1233,13 @@ Route::get('/tenant-app/{tenant?}', function (Request $request, ?Tenant $tenant 
     }
 
     $tenant ??= $resolveTenantFromRequest($request);
-    $tenant ??= Tenant::query()->latest('id')->first();
 
     if ($tenant === null) {
         return abort(404);
+    }
+
+    if (! (bool) ($tenant->is_active ?? true)) {
+        return redirect()->to($tenantLoginUrl($tenant))->with('tenant_deactivated', true);
     }
 
     $tenantDomain = strtolower((string) $tenant->domain);
@@ -641,15 +1261,11 @@ Route::get('/tenant-app/{tenant?}', function (Request $request, ?Tenant $tenant 
         default => 'Staff',
     };
 
-    $tenant ??= Tenant::query()->latest('id')->first();
+    $target = $tenantAppUrl($tenant);
+    $current = rtrim($request->getSchemeAndHttpHost().$request->getPathInfo(), '/');
 
-    if ($tenant !== null) {
-        $target = $tenantAppUrl($tenant);
-        $current = rtrim($request->getSchemeAndHttpHost().$request->getPathInfo(), '/');
-
-        if ($current !== rtrim($target, '/')) {
-            return redirect()->away($target);
-        }
+    if ($current !== rtrim($target, '/')) {
+        return redirect()->away($target);
     }
 
     // Load TenantRole from database and use RBAC service
@@ -693,9 +1309,26 @@ $requireTenantAuth = function (Request $request) use ($isCentralRequest, $resolv
         return abort(404);
     }
 
+    if (! (bool) ($tenant->is_active ?? true)) {
+        $request->session()->forget([
+            'tenant_authenticated_domain',
+            'tenant_role',
+            'tenant_user_email',
+            'tenant_user_name',
+            'tenant_user_first_name',
+            'tenant_user_last_name',
+            'tenant_user_middle_initial',
+            'tenant_user_phone',
+        ]);
+
+        return redirect()->to($tenantLoginUrl($tenant))->with('tenant_deactivated', true);
+    }
+
     if ($request->session()->get('tenant_authenticated_domain') !== (string) $tenant->domain) {
         return redirect()->away($tenantLoginUrl($tenant));
     }
+
+    $request->attributes->set('resolved_tenant', $tenant);
 
     return null;
 };
@@ -723,14 +1356,109 @@ $getTenantViewData = function (Request $request) use ($resolveTenantFromRequest)
 // Dashboard (all roles)
 Route::get('/dashboard', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
     if ($redirect = $requireTenantAuth($request)) return $redirect;
-    return view('tenant.dashboard', $getTenantViewData($request));
+    $data = $getTenantViewData($request);
+    
+    $usePlaceholderMetrics = (string) config('app.env') !== 'production';
+
+    if ($usePlaceholderMetrics) {
+        // Placeholder-only values are intentionally disabled for production.
+        $data['stats'] = [
+            'orders_today' => rand(15, 30),
+            'orders_growth' => '+'.rand(5, 15).'%',
+            'delivered_percent' => rand(85, 98).'%',
+            'delivered_count' => rand(8, 20),
+            'in_kitchen' => rand(5, 15),
+            'pending_pickup' => $data['tenantRole'] === 'cashier' ? rand(2, 5) : rand(1, 3),
+            'revenue' => number_format(rand(1500, 3500), 0),
+            'active_staff' => rand(3, 8),
+            'pending_approvals' => rand(1, 4),
+            'assigned_tasks' => rand(2, 6),
+        ];
+
+        $data['chart_data'] = [
+            'revenue' => [rand(40, 60), rand(60, 80), rand(50, 70), rand(75, 95), rand(45, 65), rand(80, 100), rand(55, 75)],
+            'orders' => [rand(30, 50), rand(50, 70), rand(40, 60), rand(65, 85), rand(35, 55), rand(70, 90), rand(45, 65)],
+        ];
+
+        $data['recent_orders'] = [
+            ['id' => '#'.rand(1000, 9999), 'customer' => 'Maria Santos', 'items' => rand(5, 20).' items', 'status' => 'preparing', 'time' => '10 min ago'],
+            ['id' => '#'.rand(1000, 9999), 'customer' => 'Tech Corp', 'items' => rand(15, 50).' items', 'status' => 'ready', 'time' => '25 min ago'],
+            ['id' => '#'.rand(1000, 9999), 'customer' => 'Wedding Party', 'items' => rand(50, 150).' items', 'status' => 'delivered', 'time' => '1 hour ago'],
+        ];
+    } else {
+        $data['stats'] = [
+            'orders_today' => 0,
+            'orders_growth' => '+0%',
+            'delivered_percent' => '0%',
+            'delivered_count' => 0,
+            'in_kitchen' => 0,
+            'pending_pickup' => 0,
+            'revenue' => '0',
+            'active_staff' => 0,
+            'pending_approvals' => 0,
+            'assigned_tasks' => 0,
+        ];
+
+        $data['chart_data'] = [
+            'revenue' => [0, 0, 0, 0, 0, 0, 0],
+            'orders' => [0, 0, 0, 0, 0, 0, 0],
+        ];
+
+        $data['recent_orders'] = [];
+    }
+    
+    $data['tasks'] = [
+        ['task' => 'Prepare seafood batch for evening event', 'priority' => 'high', 'done' => false],
+        ['task' => 'Check inventory levels for weekend', 'priority' => 'medium', 'done' => false],
+        ['task' => 'Review new menu items with chef', 'priority' => 'low', 'done' => true],
+        ['task' => 'Update delivery schedule', 'priority' => 'medium', 'done' => false],
+    ];
+
+    return view('tenant.dashboard', $data);
 })->name('tenant.dashboard');
 
 // Orders (all roles)
-Route::get('/orders', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+Route::get('/orders', function (Request $request) use ($requireTenantAuth) {
     if ($redirect = $requireTenantAuth($request)) return $redirect;
-    return view('tenant.orders', $getTenantViewData($request));
-})->name('tenant.orders');
+
+    return app(OrdersController::class)->index($request);
+})->name('tenant.orders.index');
+
+Route::get('/orders/create', function (Request $request) use ($requireTenantAuth) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+
+    return app(OrdersController::class)->create($request);
+})->name('tenant.orders.create');
+
+Route::post('/orders', function (Request $request) use ($requireTenantAuth) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+
+    return app(OrdersController::class)->store($request);
+})->name('tenant.orders.store');
+
+Route::get('/orders/{order}', function (Request $request, int $order) use ($requireTenantAuth) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+
+    return app(OrdersController::class)->show($request, $order);
+})->name('tenant.orders.show');
+
+Route::get('/orders/{order}/edit', function (Request $request, int $order) use ($requireTenantAuth) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+
+    return app(OrdersController::class)->edit($request, $order);
+})->name('tenant.orders.edit');
+
+Route::put('/orders/{order}', function (Request $request, int $order) use ($requireTenantAuth) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+
+    return app(OrdersController::class)->update($request, $order);
+})->name('tenant.orders.update');
+
+Route::delete('/orders/{order}', function (Request $request, int $order) use ($requireTenantAuth) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+
+    return app(OrdersController::class)->destroy($request, $order);
+})->name('tenant.orders.destroy');
 
 // Kitchen Board (admin, manager, staff)
 Route::get('/kitchen', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {

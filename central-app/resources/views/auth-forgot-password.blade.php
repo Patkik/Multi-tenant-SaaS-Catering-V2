@@ -2,7 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1">        
     <title>{{ $title }}</title>
 
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -31,24 +31,17 @@
 </head>
 <body class="min-h-screen flex items-center justify-center p-6">
     <div class="w-full max-w-md rounded-2xl border border-[#15191f]/20 bg-white/80 p-6 shadow-[0_10px_40px_rgba(21,25,31,0.12)] backdrop-blur-sm">
-        @php
-            $tenantDeactivated = (bool) (session('tenant_deactivated') || (isset($isTenantActive) && $isTenantActive === false));
-        @endphp
-
-        @if ($tenantDeactivated)
-            <div id="tenant-deactivated-toast" class="mb-4 rounded-xl border border-[#d14b38]/40 bg-[#fee2e2] px-4 py-3 text-sm font-medium text-[#7a2e23]">
-                Admin has deactivated your domain.
-            </div>
-        @endif
+        
         @if (session('status'))
             <div id="status-toast" class="mb-4 rounded-xl border border-[#2a8573]/40 bg-[#d9f2ec] px-4 py-3 text-sm font-medium text-[#1c594c]">    
                 {{ session('status') }}
             </div>
         @endif
+
         <h1 class="display text-3xl">{{ $title }}</h1>
         <p class="mt-2 text-sm text-[#15191f]/70">{{ $subtitle }}</p>
 
-        <form method="POST" action="{{ $action }}" class="mt-6 space-y-4">
+        <form method="POST" action="{{ $action }}" class="mt-6 space-y-4">      
             @csrf
 
             <label class="block">
@@ -63,37 +56,6 @@
                 >
             </label>
 
-            <label class="block">
-                <div class="mb-1 flex items-center justify-between">
-                    <span class="block text-xs font-semibold uppercase tracking-[0.12em] text-[#15191f]/65">{{ $passwordLabel }}</span>
-                    @if (!empty($showForgotPasswordLink) && $showForgotPasswordLink)
-                        <a href="{{ $forgotPasswordUrl ?? '#' }}" class="text-xs font-medium text-[#2f4254] hover:underline" tabindex="-1">Forgot password?</a>
-                    @endif
-                </div>
-                <input
-                    type="password"
-                    name="password"
-                    required
-                    class="w-full rounded-lg border border-[#15191f]/25 bg-[#fdfaf3] px-3 py-2 text-sm outline-none transition focus:border-[#2f4254]"
-                    placeholder="Enter password"
-                >
-            </label>
-
-            @if (!empty($roleOptions) && is_array($roleOptions))
-                <label class="block">
-                    <span class="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-[#15191f]/65">{{ $roleLabel ?? 'Role' }}</span>
-                    <select
-                        name="role"
-                        required
-                        class="w-full rounded-lg border border-[#15191f]/25 bg-[#fdfaf3] px-3 py-2 text-sm outline-none transition focus:border-[#2f4254]"
-                    >
-                        @foreach ($roleOptions as $value => $label)
-                            <option value="{{ $value }}" @selected(old('role') === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </label>
-            @endif
-
             @if ($errors->any())
                 <div class="rounded-lg border border-[#d14b38]/40 bg-[#d14b38]/10 px-3 py-2 text-sm text-[#7a2e23]">
                     {{ $errors->first() }}
@@ -102,28 +64,19 @@
 
             <button
                 type="submit"
-                @disabled($tenantDeactivated)
                 class="w-full rounded-lg border border-[#15191f]/25 bg-[#15191f] px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#f6f2e8] transition hover:bg-[#2f4254]"
             >
                 {{ $submitLabel }}
             </button>
 
-            @if (!empty($showRegisterLink) && $showRegisterLink)
-                <p class="text-center text-sm text-[#15191f]/60">
-                    Don't have an account?
-                    <a href="{{ $registerUrl ?? '#' }}" class="font-medium text-[#2f4254] hover:underline">Create one</a>
-                </p>
-            @endif
+            <p class="text-center text-sm text-[#15191f]/60">
+                Remember your password?
+                <a href="{{ $loginUrl ?? '#' }}" class="font-medium text-[#2f4254] hover:underline">Sign in</a>
+            </p>
         </form>
     </div>
 
     <script>
-        const deactivatedToast = document.getElementById('tenant-deactivated-toast');
-        if (deactivatedToast) {
-            setTimeout(() => {
-                deactivatedToast.remove();
-            }, 5000);
-        }
         const statusToast = document.getElementById('status-toast');
         if (statusToast) {
             setTimeout(() => {

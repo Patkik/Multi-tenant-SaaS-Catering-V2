@@ -243,6 +243,7 @@
         <div class="w-full max-w-sm rounded-2xl border border-[#15191f]/20 bg-white p-6 shadow-2xl">
             <h2 class="display text-2xl">Verify Your Email</h2>
             <p class="mt-2 text-sm text-[#15191f]/70">We've sent a 6-digit code to <span id="otpEmail" class="font-medium"></span></p>
+            <p id="mockOtpHint" class="mt-1 hidden rounded-lg border border-[#d89a2a]/40 bg-[#d89a2a]/10 px-3 py-2 text-xs font-semibold tracking-[0.06em] text-[#6e5310]"></p>
 
             <div class="mt-6">
                 <label class="block">
@@ -426,34 +427,58 @@
             const otpInputs = document.querySelectorAll('.otp-input');
             const otpCode = document.getElementById('otpCode');
             const otpError = document.getElementById('otpError');
+            const mockOtpHint = document.getElementById('mockOtpHint');
             const verifyOtp = document.getElementById('verifyOtp');
             const cancelOtp = document.getElementById('cancelOtp');
             const resendOtp = document.getElementById('resendOtp');
             const resendTimer = document.getElementById('resendTimer');
             const registerForm = document.getElementById('registerForm');
+            const otpSendUrl = @json(route('auth.tenant.otp.send'));
+            const otpVerifyUrl = @json(route('auth.tenant.otp.verify'));
+            const csrfToken = document.querySelector('input[name="_token"]').value;
 
-            let generatedOtp = '';
             let resendCountdown = 60;
             let countdownInterval = null;
             let formData = null;
 
-            // Generate 6-digit OTP
-            function generateOtp() {
-                return Math.floor(100000 + Math.random() * 900000).toString();
+            async function postOtp(url, payload) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    const message = data.message
+                        || (data.errors && Object.values(data.errors).flat()[0])
+                        || 'Verification request failed.';
+                    throw new Error(message);
+                }
+
+                return data;
             }
 
             // Show OTP modal
-            function showOtpModal(email) {
-                generatedOtp = generateOtp();
+            function showOtpModal(email, mockCode = null) {
                 otpEmail.textContent = email;
+                if (typeof mockCode === 'string' && /^\d{6}$/.test(mockCode)) {
+                    mockOtpHint.textContent = `Mock verification code: ${mockCode}`;
+                    mockOtpHint.classList.remove('hidden');
+                } else {
+                    mockOtpHint.textContent = '';
+                    mockOtpHint.classList.add('hidden');
+                }
                 otpModal.classList.remove('hidden');
                 otpModal.classList.add('flex');
                 otpInputs[0].focus();
-                
-                // Log OTP to console for demo (in production, send via email/SMS)
-                console.log('%c[OTP CODE]: ' + generatedOtp, 'color: #2a8573; font-size: 18px; font-weight: bold;');
-                alert('Your OTP code is: ' + generatedOtp + '\n\n(In production, this would be sent to your email)');
-                
+
                 startResendTimer();
             }
 
@@ -461,9 +486,12 @@
             function hideOtpModal() {
                 otpModal.classList.add('hidden');
                 otpModal.classList.remove('flex');
+                mockOtpHint.textContent = '';
+                mockOtpHint.classList.add('hidden');
                 otpInputs.forEach(input => input.value = '');
                 otpError.classList.add('hidden');
                 verifyOtp.disabled = true;
+                otpCode.value = '';
                 if (countdownInterval) clearInterval(countdownInterval);
             }
 
@@ -530,22 +558,55 @@
             cancelOtp.addEventListener('click', hideOtpModal);
 
             // Resend OTP
-            resendOtp.addEventListener('click', function() {
-                generatedOtp = generateOtp();
-                console.log('%c[NEW OTP CODE]: ' + generatedOtp, 'color: #2a8573; font-size: 18px; font-weight: bold;');
-                alert('New OTP code: ' + generatedOtp + '\n\n(In production, this would be sent to your email)');
-                startResendTimer();
+            resendOtp.addEventListener('click', async function() {
+                const email = String(formData?.get('email') || '').trim();
+
+                if (!email) {
+                    otpError.textContent = 'Missing email for OTP request.';
+                    otpError.classList.remove('hidden');
+                    return;
+                }
+
+                resendOtp.disabled = true;
                 otpError.classList.add('hidden');
+
+                try {
+                    const result = await postOtp(otpSendUrl, { email });
+                    if (typeof result.mock_code === 'string' && /^\d{6}$/.test(result.mock_code)) {
+                        mockOtpHint.textContent = `Mock verification code: ${result.mock_code}`;
+                        mockOtpHint.classList.remove('hidden');
+                    }
+                    startResendTimer();
+                } catch (error) {
+                    otpError.textContent = error.message || 'Unable to resend code.';
+                    otpError.classList.remove('hidden');
+                    resendOtp.disabled = false;
+                }
             });
 
             // Verify OTP
-            verifyOtp.addEventListener('click', function() {
+            verifyOtp.addEventListener('click', async function() {
                 const enteredOtp = otpCode.value;
-                
-                if (enteredOtp === generatedOtp) {
-                    // OTP verified - submit the form
+
+                if (!enteredOtp || enteredOtp.length !== 6) {
+                    otpError.textContent = 'Enter the 6-digit code.';
+                    otpError.classList.remove('hidden');
+                    return;
+                }
+
+                const email = String(formData?.get('email') || '').trim();
+
+                try {
+                    verifyOtp.disabled = true;
+                    otpError.classList.add('hidden');
+
+                    await postOtp(otpVerifyUrl, {
+                        email,
+                        code: enteredOtp
+                    });
+
                     hideOtpModal();
-                    
+
                     // Create hidden form and submit
                     const hiddenForm = document.createElement('form');
                     hiddenForm.method = 'POST';
@@ -567,28 +628,23 @@
                         input.value = value;
                         hiddenForm.appendChild(input);
                     }
-                    
-                    // Add OTP verified flag
-                    const otpVerified = document.createElement('input');
-                    otpVerified.type = 'hidden';
-                    otpVerified.name = 'otp_verified';
-                    otpVerified.value = '1';
-                    hiddenForm.appendChild(otpVerified);
-                    
+
                     document.body.appendChild(hiddenForm);
                     hiddenForm.submit();
-                } else {
-                    otpError.textContent = 'Invalid code. Please try again.';
+                } catch (error) {
+                    otpError.textContent = error.message || 'Invalid code. Please try again.';
                     otpError.classList.remove('hidden');
                     otpInputs.forEach(input => {
                         input.classList.add('border-[#d14b38]');
                         setTimeout(() => input.classList.remove('border-[#d14b38]'), 2000);
                     });
+                } finally {
+                    verifyOtp.disabled = false;
                 }
             });
 
             // Form validation before submit - show OTP modal
-            registerForm.addEventListener('submit', function(e) {
+            registerForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
                 const result = checkStrength(password.value);
@@ -604,8 +660,18 @@
 
                 // Store form data and show OTP modal
                 formData = new FormData(registerForm);
-                const email = formData.get('email');
-                showOtpModal(email);
+                const email = String(formData.get('email') || '').trim();
+
+                submitBtn.disabled = true;
+
+                try {
+                    const result = await postOtp(otpSendUrl, { email });
+                    showOtpModal(email, result.mock_code ?? null);
+                } catch (error) {
+                    alert(error.message || 'Unable to send verification code right now.');
+                } finally {
+                    submitBtn.disabled = false;
+                }
             });
         });
     </script>

@@ -3,6 +3,12 @@
 @section('title', 'Tenants - Central App')
 
 @section('content')
+    @php
+        $defaultTenantPort = isset($defaultTenantDomainPort) && is_numeric($defaultTenantDomainPort)
+            ? (int) $defaultTenantDomainPort
+            : 80;
+    @endphp
+
     {{-- Page Header --}}
     <header class="rounded-2xl border border-[#15191f]/20 bg-[#f6f2e8]/80 p-6 shadow-[0_10px_40px_rgba(21,25,31,0.08)] backdrop-blur-sm">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -30,6 +36,7 @@
                 <label class="block">
                     <span class="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-[#15191f]/65">Tenant Name</span>
                     <input
+                        id="tenant_name"
                         name="name"
                         value="{{ old('name') }}"
                         required
@@ -41,17 +48,20 @@
                 <label class="block">
                     <span class="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-[#15191f]/65">Tenant Domain</span>
                     <input
+                        id="tenant_domain"
                         name="domain"
                         value="{{ old('domain') }}"
+                        data-default-port="{{ $defaultTenantPort }}"
                         required
                         class="w-full rounded-lg border border-[#15191f]/25 bg-[#fdfaf3] px-3 py-2 text-sm outline-none transition focus:border-[#2f4254]"
-                        placeholder="northwind.localhost:8080"
+                        placeholder="northwind.localhost:{{ $defaultTenantPort }}"
                     >
                 </label>
 
                 <label class="block">
                     <span class="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-[#15191f]/65">Database Name</span>
                     <input
+                        id="database_name"
                         name="database_name"
                         value="{{ old('database_name') }}"
                         required
@@ -63,12 +73,14 @@
 
                 <label class="block">
                     <span class="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-[#15191f]/65">Plan Code</span>
-                    <input
+                    <select
                         name="plan_code"
-                        value="{{ old('plan_code', 'starter') }}"
                         class="w-full rounded-lg border border-[#15191f]/25 bg-[#fdfaf3] px-3 py-2 text-sm outline-none transition focus:border-[#2f4254]"
-                        placeholder="starter"
                     >
+                        <option value="starter" @selected(old('plan_code', 'starter') === 'starter')>Starter</option>
+                        <option value="growth" @selected(old('plan_code') === 'growth')>Growth</option>
+                        <option value="enterprise" @selected(old('plan_code') === 'enterprise')>Enterprise</option>
+                    </select>
                 </label>
 
                 <label class="block sm:col-span-2">
@@ -106,9 +118,33 @@
 
             @php
                 $latestTenant = $tenants->first();
-                $tenantLoginUrl = static function (string $domain): string {
+                $tenantLoginUrl = static function (string $domain) use ($defaultTenantPort): string {
                     $base = preg_match('/\Ahttps?:\/\//i', $domain) === 1 ? $domain : "http://{$domain}";
-                    return rtrim($base, '/') . '/auth/tenant/login';
+                    $parts = parse_url($base);
+
+                    if (! is_array($parts)) {
+                        return rtrim($base, '/') . '/auth/tenant/login';
+                    }
+
+                    $host = strtolower((string) ($parts['host'] ?? ''));
+
+                    if ($host === '') {
+                        return rtrim($base, '/') . '/auth/tenant/login';
+                    }
+
+                    $isLoopback = in_array(trim($host, '[]'), ['localhost', '127.0.0.1', '::1'], true);
+                    $isLocalEquivalent = $isLoopback || str_ends_with($host, '.localhost');
+                    $port = isset($parts['port']) ? (int) $parts['port'] : null;
+
+                    if ($isLocalEquivalent && ($port === null || $port === 8080) && $defaultTenantPort > 0) {
+                        $port = $defaultTenantPort;
+                    }
+
+                    $scheme = (string) ($parts['scheme'] ?? 'http');
+                    $authorityHost = str_contains($host, ':') ? '['.$host.']' : $host;
+                    $authority = $port === null ? $authorityHost : sprintf('%s:%d', $authorityHost, $port);
+
+                    return sprintf('%s://%s/auth/tenant/login', $scheme, $authority);
                 };
             @endphp
 
@@ -157,20 +193,49 @@
                         <th class="pb-2 pr-3">Domain</th>
                         <th class="pb-2 pr-3">Database</th>
                         <th class="pb-2 pr-3">Plan</th>
+                        <th class="pb-2 pr-3">Activation</th>
                         <th class="pb-2 pr-3">Status</th>
                         <th class="pb-2 pr-3">Created</th>
+                        <th class="pb-2 pr-3 text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($tenants as $tenant)
+                        @php
+                            $formId = 'tenant-update-'.(string) $tenant->id;
+                        @endphp
                         <tr class="border-b border-[#15191f]/10">
                             <td class="py-3 pr-3 font-medium">{{ $tenant->name }}</td>
                             <td class="py-3 pr-3 text-[#15191f]/70">{{ $tenant->domain }}</td>
                             <td class="py-3 pr-3 font-mono text-xs text-[#15191f]/60">{{ $tenant->database_name }}</td>
                             <td class="py-3 pr-3">
-                                <span class="rounded-full border border-[#15191f]/15 bg-[#f6f2e8] px-2 py-0.5 text-xs">
-                                    {{ $tenant->plan_code ?? 'starter' }}
-                                </span>
+                                @php
+                                    $planOptions = ['starter', 'growth', 'enterprise'];
+                                    $currentPlan = (string) ($tenant->plan_code ?? 'starter');
+
+                                    if (! in_array($currentPlan, $planOptions, true)) {
+                                        array_unshift($planOptions, $currentPlan);
+                                    }
+                                @endphp
+                                <select
+                                    name="plan_code"
+                                    form="{{ $formId }}"
+                                    class="w-full rounded-lg border border-[#15191f]/20 bg-[#fdfaf3] px-2 py-1.5 text-xs font-semibold uppercase tracking-[0.06em] text-[#15191f]/80 outline-none focus:border-[#2f4254]"
+                                >
+                                    @foreach ($planOptions as $option)
+                                        <option value="{{ $option }}" @selected($currentPlan === $option)>{{ $option }}</option>
+                                    @endforeach
+                                </select>
+                            </td>
+                            <td class="py-3 pr-3">
+                                <select
+                                    name="is_active"
+                                    form="{{ $formId }}"
+                                    class="w-full rounded-lg border border-[#15191f]/20 bg-[#fdfaf3] px-2 py-1.5 text-xs font-semibold uppercase tracking-[0.06em] text-[#15191f]/80 outline-none focus:border-[#2f4254]"
+                                >
+                                    <option value="1" @selected((bool) ($tenant->is_active ?? true))>Active</option>
+                                    <option value="0" @selected(! (bool) ($tenant->is_active ?? true))>Deactivated</option>
+                                </select>
                             </td>
                             <td class="py-3 pr-3">
                                 @php
@@ -188,10 +253,23 @@
                             <td class="py-3 pr-3 text-xs text-[#15191f]/60">
                                 {{ $tenant->created_at?->format('M j, Y') ?? '—' }}
                             </td>
+                            <td class="py-3 pr-3 text-right">
+                                <form id="{{ $formId }}" method="POST" action="{{ route('central.tenants.update', $tenant) }}" class="inline">
+                                    @csrf
+                                    @method('PATCH')
+                                </form>
+                                <button
+                                    type="submit"
+                                    form="{{ $formId }}"
+                                    class="rounded-md border border-[#15191f]/20 bg-[#f6f2e8] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#15191f] transition hover:bg-white"
+                                >
+                                    Save
+                                </button>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="py-8 text-center text-[#15191f]/60">
+                            <td colspan="8" class="py-8 text-center text-[#15191f]/60">
                                 No tenants registered yet. Use the form above to create one.
                             </td>
                         </tr>
@@ -201,3 +279,36 @@
         </div>
     </article>
 @endsection
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const nameInput = document.getElementById('tenant_name');
+        const domainInput = document.getElementById('tenant_domain');
+        const dbInput = document.getElementById('database_name');
+
+        if (nameInput && domainInput && dbInput) {
+            const defaultTenantPort = Number(domainInput.dataset.defaultPort || '80');
+
+            nameInput.addEventListener('input', function () {
+                const nameValue = this.value;
+                
+                // Only auto-fill if the user hasn't manually edited the other fields, 
+                // or keep it simple and just overwrite if we want it to be automatic.
+                // We'll do a simple overwrite for ease.
+                
+                // Create a slug from the name: lowercased, alphanumeric only
+                const slug = nameValue.toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                if (slug) {
+                    domainInput.value = `${slug}.localhost:${defaultTenantPort}`;
+                    dbInput.value = `tenant_${slug}`;
+                } else {
+                    domainInput.value = '';
+                    dbInput.value = '';
+                }
+            });
+        }
+    });
+</script>
+@endpush

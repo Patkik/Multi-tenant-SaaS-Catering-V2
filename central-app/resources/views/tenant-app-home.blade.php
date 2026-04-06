@@ -93,9 +93,9 @@
         <div class="grid gap-3 lg:grid-cols-[250px_1fr]">
             <aside class="tile p-5">
                 <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-full border border-[#0a7a4c]/30 bg-[#0a7a4c]/10 text-lg">🍽</div>
+                    <div class="flex h-8 w-8 items-center justify-center rounded-full border border-[#0a7a4c]/30 bg-[#0a7a4c]/10 text-base">🍽</div>
                     <div>
-                        <p class="font-bold">CaterFlow</p>
+                        <p class="font-bold text-sm">CaterFlow</p>
                         <p class="text-xs text-[var(--muted)]">{{ $tenantRoleLabel }} Dashboard</p>
                     </div>
                 </div>
