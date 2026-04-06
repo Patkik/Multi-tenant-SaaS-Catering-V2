@@ -129,8 +129,138 @@ Route::get('/auth/tenant/login', function (Request $request) use ($isCentralRequ
             'cashier' => 'Cashier',
         ],
         'submitLabel' => 'Sign In to Tenant',
+        'showRegisterLink' => true,
+        'registerUrl' => route('auth.tenant.register'),
     ]);
 })->name('auth.tenant.login');
+
+// Tenant Registration Routes
+Route::get('/auth/tenant/register', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $tenant = $resolveTenantFromRequest($request);
+
+    if ($tenant === null) {
+        return abort(404);
+    }
+
+    return view('auth-register', [
+        'title' => 'Create Account',
+        'subtitle' => sprintf('Register to join %s.', $tenant->name),
+        'action' => route('auth.tenant.register.submit'),
+        'submitLabel' => 'Create Account',
+        'loginUrl' => route('auth.tenant.login'),
+    ]);
+})->name('auth.tenant.register');
+
+Route::post('/auth/tenant/register', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $tenantAppUrl) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $tenant = $resolveTenantFromRequest($request);
+
+    if ($tenant === null) {
+        return abort(404);
+    }
+
+    // Verify OTP was completed
+    if (!$request->input('otp_verified')) {
+        return back()->withInput()->withErrors(['otp' => 'Email verification required.']);
+    }
+
+    $validated = $request->validate([
+        'first_name' => ['required', 'string', 'max:100'],
+        'middle_initial' => ['nullable', 'string', 'max:1'],
+        'last_name' => ['required', 'string', 'max:100'],
+        'email' => ['required', 'email', 'max:255'],
+        'phone' => ['required', 'string', 'max:30'],
+        'phone_format' => ['required', 'string', 'in:us,uk,ph,au,ca,de,fr,jp,other'],
+        'role' => ['required', 'string', 'in:staff,cashier,manager,admin'],
+        'password' => [
+            'required',
+            'string',
+            'min:8',
+            'confirmed',
+            'regex:/[a-z]/',      // lowercase
+            'regex:/[A-Z]/',      // uppercase
+            'regex:/[0-9]/',      // number
+            'regex:/[!@#$%^&*(),.?":{}|<>]/', // special char
+        ],
+    ], [
+        'password.regex' => 'Password must contain uppercase, lowercase, number, and special character.',
+        'password.confirmed' => 'Passwords do not match.',
+    ]);
+
+    // Store formatted phone with country code
+    $phoneFormats = [
+        'us' => '+1', 'uk' => '+44', 'ph' => '+63', 'au' => '+61',
+        'ca' => '+1', 'de' => '+49', 'fr' => '+33', 'jp' => '+81', 'other' => ''
+    ];
+    $phoneWithCode = $phoneFormats[$validated['phone_format']] . ' ' . $validated['phone'];
+
+    // Build full name
+    $middleInitial = !empty($validated['middle_initial']) ? strtoupper($validated['middle_initial']) . '.' : '';
+    $fullName = trim($validated['first_name'] . ' ' . $middleInitial . ' ' . $validated['last_name']);
+
+    $role = $validated['role'];
+    $requiresApproval = ($role === 'admin');
+
+    // TODO: Store user in tenant database with pending status if admin
+    // For now, authenticate them into the session (non-admin roles)
+    
+    if ($requiresApproval) {
+        // Admin role requires approval - show pending page
+        $request->session()->put('pending_registration', [
+            'tenant_domain' => (string) $tenant->domain,
+            'tenant_name' => $tenant->name,
+            'email' => $validated['email'],
+            'name' => $fullName,
+            'role' => $role,
+            'phone' => $phoneWithCode,
+            'created_at' => now()->toIso8601String(),
+        ]);
+        
+        return redirect()->route('auth.tenant.register.pending');
+    }
+
+    // Non-admin roles - activate immediately
+    $request->session()->regenerate();
+    $request->session()->put('tenant_authenticated_domain', (string) $tenant->domain);
+    $request->session()->put('tenant_role', $role);
+    $request->session()->put('tenant_user_email', (string) $validated['email']);
+    $request->session()->put('tenant_user_name', $fullName);
+    $request->session()->put('tenant_user_first_name', $validated['first_name']);
+    $request->session()->put('tenant_user_last_name', $validated['last_name']);
+    $request->session()->put('tenant_user_middle_initial', $validated['middle_initial'] ?? '');
+    $request->session()->put('tenant_user_phone', $phoneWithCode);
+
+    return redirect()->to($tenantAppUrl($tenant));
+})->name('auth.tenant.register.submit');
+
+// Pending approval page for admin registrations
+Route::get('/auth/tenant/register/pending', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $pending = $request->session()->get('pending_registration');
+    
+    if (!$pending) {
+        return redirect()->route('auth.tenant.register');
+    }
+
+    return view('auth-register-pending', [
+        'title' => 'Registration Pending',
+        'email' => $pending['email'],
+        'name' => $pending['name'],
+        'role' => $pending['role'],
+        'tenantName' => $pending['tenant_name'],
+        'loginUrl' => route('auth.tenant.login'),
+    ]);
+})->name('auth.tenant.register.pending');
 
 Route::post('/auth/tenant/login', function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $tenantAppUrl) {
     if ($isCentralRequest($request)) {
@@ -185,7 +315,16 @@ Route::post('/auth/tenant/logout', function (Request $request) use ($isCentralRe
     return redirect()->to($tenantLoginUrl($tenant));
 })->name('auth.tenant.logout');
 
-Route::get('/', function (Request $request) use ($isCentralRequest) {
+// Helper function for safe database operations
+$safe = static function (callable $callback, mixed $fallback = null): mixed {
+    try {
+        return $callback();
+    } catch (\Throwable) {
+        return $fallback;
+    }
+};
+
+Route::get('/', function (Request $request) use ($isCentralRequest, $safe) {
     if (! $isCentralRequest($request)) {
         return redirect()->route('auth.tenant.login');
     }
@@ -193,14 +332,6 @@ Route::get('/', function (Request $request) use ($isCentralRequest) {
     if (! $request->session()->get('central_authenticated', false)) {
         return redirect()->route('auth.central.login');
     }
-
-    $safe = static function (callable $callback, mixed $fallback = null): mixed {
-        try {
-            return $callback();
-        } catch (\Throwable) {
-            return $fallback;
-        }
-    };
 
     $databaseOnline = $safe(static fn (): bool => DB::connection()->getPdo() !== null, false);
 
@@ -256,24 +387,40 @@ Route::get('/', function (Request $request) use ($isCentralRequest) {
         )
         : collect();
 
-    $recentTenants = $databaseOnline
-        ? $safe(
-            static fn (): Collection => Tenant::query()
-                ->latest('id')
-                ->limit(8)
-                ->get(['id', 'name', 'domain', 'database_name', 'provisioning_status', 'created_at']),
-            collect()
-        )
-        : collect();
-
     return view('central-dashboard', [
         'databaseOnline' => (bool) $databaseOnline,
         'stats' => $stats,
         'tenantStatusBreakdown' => $tenantStatusBreakdown,
         'recentApplications' => $recentApplications,
-        'recentTenants' => $recentTenants,
     ]);
-});
+})->name('central.dashboard');
+
+// Tenants management page
+Route::get('/tenants', function (Request $request) use ($isCentralRequest, $safe) {
+    if (! $isCentralRequest($request)) {
+        return redirect()->route('auth.tenant.login');
+    }
+
+    if (! $request->session()->get('central_authenticated', false)) {
+        return redirect()->route('auth.central.login');
+    }
+
+    $databaseOnline = $safe(static fn (): bool => DB::connection()->getPdo() !== null, false);
+
+    $tenants = $databaseOnline
+        ? $safe(
+            static fn (): Collection => Tenant::query()
+                ->latest('id')
+                ->get(['id', 'name', 'domain', 'database_name', 'plan_code', 'provisioning_status', 'created_at']),
+            collect()
+        )
+        : collect();
+
+    return view('central-tenants', [
+        'databaseOnline' => (bool) $databaseOnline,
+        'tenants' => $tenants,
+    ]);
+})->name('central.tenants');
 
 Route::post('/tenants/create', function (Request $request, TenantProvisioningService $tenantProvisioningService) use ($isCentralRequest): RedirectResponse {
     if (! $isCentralRequest($request)) {

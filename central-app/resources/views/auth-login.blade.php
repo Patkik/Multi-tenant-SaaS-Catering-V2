@@ -87,6 +87,13 @@
             >
                 {{ $submitLabel }}
             </button>
+
+            @if (!empty($showRegisterLink) && $showRegisterLink)
+                <p class="text-center text-sm text-[#15191f]/60">
+                    Don't have an account?
+                    <a href="{{ $registerUrl ?? '#' }}" class="font-medium text-[#2f4254] hover:underline">Create one</a>
+                </p>
+            @endif
         </form>
     </div>
 </body>
