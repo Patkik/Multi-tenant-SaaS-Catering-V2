@@ -35,7 +35,7 @@ $tenantAppUrl = static function (Tenant $tenant): string {
     $domain = (string) $tenant->domain;
     $base = preg_match('/\Ahttps?:\/\//i', $domain) === 1 ? $domain : sprintf('http://%s', $domain);
 
-    return rtrim($base, '/').'/tenant-app';
+    return rtrim($base, '/').'/dashboard';
 };
 
 $tenantLoginUrl = static function (Tenant $tenant): string {
@@ -677,3 +677,151 @@ Route::get('/tenant-app/{tenant?}', function (Request $request, ?Tenant $tenant 
         'canOpenKitchenBoard' => $canOpenKitchenBoard,
     ]);
 })->name('tenant.app.preview');
+
+// =============================================================================
+// Tenant Dashboard Routes (Role-Based)
+// =============================================================================
+
+// Middleware closure for tenant authentication
+$requireTenantAuth = function (Request $request) use ($isCentralRequest, $resolveTenantFromRequest, $tenantLoginUrl) {
+    if ($isCentralRequest($request)) {
+        return abort(404);
+    }
+
+    $tenant = $resolveTenantFromRequest($request);
+    if ($tenant === null) {
+        return abort(404);
+    }
+
+    if ($request->session()->get('tenant_authenticated_domain') !== (string) $tenant->domain) {
+        return redirect()->away($tenantLoginUrl($tenant));
+    }
+
+    return null;
+};
+
+// Get tenant view data helper
+$getTenantViewData = function (Request $request) use ($resolveTenantFromRequest) {
+    $tenant = $resolveTenantFromRequest($request);
+    $tenantRole = (string) $request->session()->get('tenant_role', 'staff');
+    $tenantRoleLabel = match ($tenantRole) {
+        'admin' => 'Admin',
+        'manager' => 'Manager',
+        'cashier' => 'Cashier',
+        default => 'Staff',
+    };
+
+    return [
+        'tenant' => $tenant,
+        'tenantRole' => $tenantRole,
+        'tenantRoleLabel' => $tenantRoleLabel,
+        'tenantUserEmail' => (string) $request->session()->get('tenant_user_email', 'unknown@tenant.local'),
+        'tenantUserName' => (string) $request->session()->get('tenant_user_name', 'User'),
+    ];
+};
+
+// Dashboard (all roles)
+Route::get('/dashboard', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    return view('tenant.dashboard', $getTenantViewData($request));
+})->name('tenant.dashboard');
+
+// Orders (all roles)
+Route::get('/orders', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    return view('tenant.orders', $getTenantViewData($request));
+})->name('tenant.orders');
+
+// Kitchen Board (admin, manager, staff)
+Route::get('/kitchen', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if (!in_array($data['tenantRole'], ['admin', 'manager', 'staff'])) {
+        return abort(403, 'Access denied');
+    }
+    return view('tenant.kitchen', $data);
+})->name('tenant.kitchen');
+
+// Calendar (admin, manager, staff)
+Route::get('/calendar', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if (!in_array($data['tenantRole'], ['admin', 'manager', 'staff'])) {
+        return abort(403, 'Access denied');
+    }
+    return view('tenant.calendar', $data);
+})->name('tenant.calendar');
+
+// Payments (admin, manager, cashier)
+Route::get('/payments', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if (!in_array($data['tenantRole'], ['admin', 'manager', 'cashier'])) {
+        return abort(403, 'Access denied');
+    }
+    return view('tenant.payments', $data);
+})->name('tenant.payments');
+
+// Analytics (admin, manager)
+Route::get('/analytics', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if (!in_array($data['tenantRole'], ['admin', 'manager'])) {
+        return abort(403, 'Access denied');
+    }
+    return view('tenant.analytics', $data);
+})->name('tenant.analytics');
+
+// Reports (admin, manager)
+Route::get('/reports', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if (!in_array($data['tenantRole'], ['admin', 'manager'])) {
+        return abort(403, 'Access denied');
+    }
+    return view('tenant.reports', $data);
+})->name('tenant.reports');
+
+// =============================================================================
+// Admin-Only Routes
+// =============================================================================
+
+// User Management (admin only)
+Route::get('/admin/users', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if ($data['tenantRole'] !== 'admin') {
+        return abort(403, 'Admin access required');
+    }
+    return view('tenant.admin.users', $data);
+})->name('tenant.admin.users');
+
+// Roles & Permissions (admin only)
+Route::get('/admin/roles', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if ($data['tenantRole'] !== 'admin') {
+        return abort(403, 'Admin access required');
+    }
+    return view('tenant.admin.roles', $data);
+})->name('tenant.admin.roles');
+
+// Pending Approvals (admin only)
+Route::get('/admin/approvals', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if ($data['tenantRole'] !== 'admin') {
+        return abort(403, 'Admin access required');
+    }
+    return view('tenant.admin.approvals', $data);
+})->name('tenant.admin.approvals');
+
+// Settings (admin only)
+Route::get('/admin/settings', function (Request $request) use ($requireTenantAuth, $getTenantViewData) {
+    if ($redirect = $requireTenantAuth($request)) return $redirect;
+    $data = $getTenantViewData($request);
+    if ($data['tenantRole'] !== 'admin') {
+        return abort(403, 'Admin access required');
+    }
+    return view('tenant.admin.settings', $data);
+})->name('tenant.admin.settings');
