@@ -25,8 +25,8 @@ class TenantUserRequest extends FormRequest
             'mi' => ['sometimes', 'nullable', 'string', 'max:10'],
             'email' => ['sometimes', 'nullable', 'email', 'max:150', Rule::unique('users', 'email')->ignore($memberId)],
             'password' => $this->isMethod('post')
-                ? ['required', 'string', 'min:8', 'max:255']
-                : ['sometimes', 'nullable', 'string', 'min:8', 'max:255'],
+                ? ['required', 'string', 'min:8', 'max:255', 'confirmed']
+                : ['sometimes', 'nullable', 'string', 'min:8', 'max:255', 'confirmed'],
             'role' => [...$requiredRule, Rule::in(TenantRoles::all())],
             'is_active' => ['sometimes', 'boolean'],
         ];

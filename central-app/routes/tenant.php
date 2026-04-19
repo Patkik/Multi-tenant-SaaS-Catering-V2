@@ -36,7 +36,9 @@ Route::middleware([
 ])->group(function () {
     Route::prefix('/api/tenant')->group(function () {
         Route::get('/capabilities', TenantCapabilityController::class);
+        Route::get('/auth/registration-policy', [TenantAuthController::class, 'registrationPolicy']);
         Route::post('/auth/login', [TenantAuthController::class, 'login']);
+        Route::post('/auth/register', [TenantAuthController::class, 'register']);
 
         Route::middleware('auth:sanctum')->group(function () {
             Route::get('/auth/me', [TenantAuthController::class, 'me']);

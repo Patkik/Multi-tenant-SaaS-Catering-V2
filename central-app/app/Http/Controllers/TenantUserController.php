@@ -26,17 +26,28 @@ class TenantUserController extends Controller
             });
         }
 
+        $firstAdminUserId = $this->resolveFirstAdminUserId();
+
         return response()->json([
             'data' => $query
                 ->latest('id')
                 ->paginate(15)
                 ->through(fn (User $user) => $this->serializeUser($user)),
+            'meta' => [
+                'first_admin_user_id' => $firstAdminUserId,
+                'can_assign_admin_role' => $this->canActorAssignAdminRole($request->user(), $firstAdminUserId),
+            ],
         ]);
     }
 
     public function store(TenantUserRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $requestedRole = TenantRoles::normalize((string) $validated['role']);
+
+        if ($response = $this->rejectIfAdminRoleNotAllowed($request->user(), $requestedRole)) {
+            return $response;
+        }
 
         $user = User::query()->create([
             'name' => trim($validated['firstname'].' '.$validated['lastname']),
@@ -49,7 +60,7 @@ class TenantUserController extends Controller
             'is_active' => array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
         ]);
 
-        $user->syncRoles([TenantRoles::normalize((string) $validated['role'])]);
+        $user->syncRoles([$requestedRole]);
 
         return response()->json([
             'data' => $this->serializeUser($user),
@@ -79,7 +90,13 @@ class TenantUserController extends Controller
         $member->save();
 
         if (array_key_exists('role', $validated)) {
-            $member->syncRoles([TenantRoles::normalize((string) $validated['role'])]);
+            $requestedRole = TenantRoles::normalize((string) $validated['role']);
+
+            if ($response = $this->rejectIfAdminRoleNotAllowed($request->user(), $requestedRole)) {
+                return $response;
+            }
+
+            $member->syncRoles([$requestedRole]);
         }
 
         if (! $member->is_active) {
@@ -128,5 +145,48 @@ class TenantUserController extends Controller
             'modules' => TenantRoles::moduleCapabilities()[$role] ?? [],
             'created_at' => optional($user->created_at)?->toIso8601String(),
         ];
+    }
+
+    private function resolveFirstAdminUserId(): ?int
+    {
+        $firstAdminUserId = User::query()
+            ->whereHas('roles', function ($query): void {
+                $query->where('name', TenantRoles::ADMIN);
+            })
+            ->orderBy('id')
+            ->value('id');
+
+        return is_numeric($firstAdminUserId) ? (int) $firstAdminUserId : null;
+    }
+
+    private function canActorAssignAdminRole(?User $actor, ?int $firstAdminUserId = null): bool
+    {
+        if (! $actor) {
+            return false;
+        }
+
+        $resolvedFirstAdminUserId = $firstAdminUserId ?? $this->resolveFirstAdminUserId();
+
+        return $resolvedFirstAdminUserId !== null && (int) $actor->id === $resolvedFirstAdminUserId;
+    }
+
+    private function rejectIfAdminRoleNotAllowed(?User $actor, string $requestedRole): ?JsonResponse
+    {
+        if ($requestedRole !== TenantRoles::ADMIN) {
+            return null;
+        }
+
+        $firstAdminUserId = $this->resolveFirstAdminUserId();
+
+        if ($this->canActorAssignAdminRole($actor, $firstAdminUserId)) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'Only the first admin account can assign the Admin role.',
+            'errors' => [
+                'role' => ['Only the first admin account can assign the Admin role.'],
+            ],
+        ], 403);
     }
 }

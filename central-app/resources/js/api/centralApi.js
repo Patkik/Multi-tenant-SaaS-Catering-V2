@@ -71,6 +71,12 @@ export async function fetchCentralSystemHealth() {
     return response.data.data;
 }
 
+export async function fetchCentralAppUpdates() {
+    const response = await http.get('/api/central/app-updates');
+
+    return response.data.data;
+}
+
 export async function fetchCentralAuditLogs({ search = '', type = '', actor = '' } = {}) {
     const response = await http.get('/api/central/audit-logs', {
         params: {

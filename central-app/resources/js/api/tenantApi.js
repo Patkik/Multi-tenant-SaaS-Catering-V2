@@ -17,6 +17,22 @@ export async function loginTenantUser(payload) {
     return response.data.data;
 }
 
+export async function fetchTenantRegistrationPolicy() {
+    const response = await http.get('/api/tenant/auth/registration-policy');
+
+    return response.data.data;
+}
+
+export async function registerTenantAuthUser(payload) {
+    const response = await http.post('/api/tenant/auth/register', payload);
+
+    if (response.data?.data?.token) {
+        setTenantToken(response.data.data.token);
+    }
+
+    return response.data.data;
+}
+
 export async function fetchTenantMe() {
     const response = await http.get('/api/tenant/auth/me');
 

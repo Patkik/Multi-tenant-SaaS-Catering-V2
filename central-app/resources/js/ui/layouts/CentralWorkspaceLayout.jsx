@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { fetchCentralAppUpdates } from '../../api/centralApi';
 import { useTenantContext } from '../../providers/TenantProvider';
 
 const links = [
@@ -18,6 +20,13 @@ const appVersion = import.meta.env.VITE_APP_VERSION || '0.0.0';
 export function CentralWorkspaceLayout() {
     const location = useLocation();
     const { centralAuthUser, centralSignOut } = useTenantContext();
+    const appUpdatesQuery = useQuery({
+        queryKey: ['central-app-updates'],
+        queryFn: fetchCentralAppUpdates,
+        staleTime: 1000 * 60 * 5,
+        refetchInterval: 1000 * 60 * 5,
+        retry: false,
+    });
 
     const pageTitle = useMemo(() => {
         const activeRoute = links.find((entry) => entry.to === location.pathname);
@@ -41,6 +50,10 @@ export function CentralWorkspaceLayout() {
             .map((part) => part[0]?.toUpperCase())
             .join('') || 'CA';
     }, [adminName]);
+
+            const updateInfo = appUpdatesQuery.data;
+            const hasAvailableUpdate = Boolean(updateInfo?.enabled && updateInfo?.update_available);
+            const latestVersionLabel = updateInfo?.latest_tag || updateInfo?.latest_version;
 
     return (
         <div
@@ -136,6 +149,22 @@ export function CentralWorkspaceLayout() {
                         >
                             v{appVersion}
                         </span>
+                        {hasAvailableUpdate ? (
+                            <a
+                                href={updateInfo?.release_url || '#'}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
+                                style={{
+                                    borderColor: '#D85A30',
+                                    backgroundColor: '#FAECE7',
+                                    color: '#712B13',
+                                }}
+                                title={latestVersionLabel ? `Latest release: ${latestVersionLabel}` : 'A newer release is available'}
+                            >
+                                Update Available
+                            </a>
+                        ) : null}
                         <span
                             className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold"
                             style={{

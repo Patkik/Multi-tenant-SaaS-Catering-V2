@@ -1,21 +1,25 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createTenantUser, deleteTenantUser, fetchTenantUsers, updateTenantUser } from '../../../api/tenantApi';
+import { useTenantContext } from '../../../providers/TenantProvider';
 
 const roleOptions = ['Admin', 'Manager', 'Staff', 'Cashier'];
 
 const initialForm = {
-    username: '',
     firstname: '',
     lastname: '',
+    mi: '',
+    business_name: '',
     email: '',
     password: '',
+    password_confirmation: '',
     role: 'Staff',
     is_active: true,
 };
 
 export function TenantUsersPage() {
     const queryClient = useQueryClient();
+    const { authUser } = useTenantContext();
     const [editingId, setEditingId] = useState(null);
     const [form, setForm] = useState(initialForm);
 
@@ -48,6 +52,28 @@ export function TenantUsersPage() {
     });
 
     const users = useMemo(() => usersQuery.data?.data?.data ?? [], [usersQuery.data]);
+    const firstAdminUserId = usersQuery.data?.data?.meta?.first_admin_user_id ?? null;
+    const canAssignAdminRole = Boolean(usersQuery.data?.data?.meta?.can_assign_admin_role);
+
+    const assignableRoles = useMemo(() => {
+        if (canAssignAdminRole) {
+            return roleOptions;
+        }
+
+        return roleOptions.filter((role) => role !== 'Admin');
+    }, [canAssignAdminRole]);
+
+    const roleHelpText = useMemo(() => {
+        if (canAssignAdminRole) {
+            return 'You can assign all roles, including Admin.';
+        }
+
+        if (!firstAdminUserId) {
+            return 'Admin assignment is currently unavailable because no first admin was detected.';
+        }
+
+        return 'Only the first admin account can create or promote another Admin.';
+    }, [canAssignAdminRole, firstAdminUserId]);
 
     function updateField(key, value) {
         setForm((previous) => ({
@@ -56,15 +82,64 @@ export function TenantUsersPage() {
         }));
     }
 
+    function normalizeUsername(value) {
+        return String(value || '')
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9._-]/g, '');
+    }
+
+    function toGeneratedUsername() {
+        const preferred = normalizeUsername(String(form.email || '').split('@')[0]);
+
+        if (preferred) {
+            return preferred.slice(0, 50);
+        }
+
+        const fallback = normalizeUsername(`${form.firstname}.${form.lastname}`.replace(/\.+/g, '.'));
+
+        if (fallback) {
+            return fallback.slice(0, 50);
+        }
+
+        return 'user';
+    }
+
     function submit(event) {
         event.preventDefault();
 
+        const selectedRole = assignableRoles.includes(form.role) ? form.role : 'Staff';
+
         const payload = {
-            ...form,
+            username: toGeneratedUsername(),
+            firstname: form.firstname,
+            lastname: form.lastname,
+            mi: form.mi || undefined,
+            email: form.email || undefined,
+            role: selectedRole,
+            is_active: Boolean(form.is_active),
             password: form.password || undefined,
+            password_confirmation: form.password_confirmation || undefined,
         };
 
         saveUserMutation.mutate(payload);
+    }
+
+    function beginEditUser(user) {
+        const nextRole = assignableRoles.includes(user.role) ? user.role : 'Staff';
+
+        setEditingId(user.id);
+        setForm({
+            firstname: user.firstname || '',
+            lastname: user.lastname || '',
+            mi: user.mi || '',
+            business_name: '',
+            email: user.email || '',
+            password: '',
+            password_confirmation: '',
+            role: nextRole,
+            is_active: Boolean(user.is_active),
+        });
     }
 
     return (
@@ -75,52 +150,93 @@ export function TenantUsersPage() {
             </section>
 
             <section className="grid gap-4 xl:grid-cols-[1.05fr_1.95fr]">
-                <form onSubmit={submit} className="app-shell-panel rounded-3xl p-5">
+                <form onSubmit={submit} className="central-card rounded-3xl p-5">
                     <h2 className="text-lg font-semibold text-slate-900">{editingId ? 'Update User' : 'Add User'}</h2>
-                    <div className="mt-4 grid gap-3">
-                        <input
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                            placeholder="Username"
-                            value={form.username}
-                            onChange={(event) => updateField('username', event.target.value)}
-                        />
-                        <input
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                            placeholder="First name"
-                            value={form.firstname}
-                            onChange={(event) => updateField('firstname', event.target.value)}
-                        />
-                        <input
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                            placeholder="Last name"
-                            value={form.lastname}
-                            onChange={(event) => updateField('lastname', event.target.value)}
-                        />
-                        <input
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                            placeholder="Email"
-                            value={form.email}
-                            onChange={(event) => updateField('email', event.target.value)}
-                        />
-                        <input
-                            type="password"
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                            placeholder={editingId ? 'New password (optional)' : 'Password'}
-                            value={form.password}
-                            onChange={(event) => updateField('password', event.target.value)}
-                        />
-                        <select
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                            value={form.role}
-                            onChange={(event) => updateField('role', event.target.value)}
-                        >
-                            {roleOptions.map((role) => (
-                                <option key={role} value={role}>
-                                    {role}
-                                </option>
-                            ))}
-                        </select>
-                        <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <label className="text-[12px] font-semibold text-slate-700">
+                            First name
+                            <input
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                value={form.firstname}
+                                onChange={(event) => updateField('firstname', event.target.value)}
+                                required
+                            />
+                        </label>
+                        <label className="text-[12px] font-semibold text-slate-700">
+                            Last name
+                            <input
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                value={form.lastname}
+                                onChange={(event) => updateField('lastname', event.target.value)}
+                                required
+                            />
+                        </label>
+                        <label className="text-[12px] font-semibold text-slate-700">
+                            Middle initial
+                            <input
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                value={form.mi}
+                                maxLength={10}
+                                onChange={(event) => updateField('mi', event.target.value)}
+                            />
+                        </label>
+                        <label className="text-[12px] font-semibold text-slate-700">
+                            Business name
+                            <input
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                value={form.business_name}
+                                onChange={(event) => updateField('business_name', event.target.value)}
+                                placeholder="Optional"
+                            />
+                        </label>
+                        <label className="text-[12px] font-semibold text-slate-700 md:col-span-2">
+                            Email
+                            <input
+                                type="email"
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                value={form.email}
+                                onChange={(event) => updateField('email', event.target.value)}
+                            />
+                        </label>
+                        <label className="text-[12px] font-semibold text-slate-700">
+                            {editingId ? 'New password' : 'Password'}
+                            <input
+                                type="password"
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                placeholder={editingId ? 'Leave blank to keep current password' : ''}
+                                value={form.password}
+                                onChange={(event) => updateField('password', event.target.value)}
+                                required={!editingId}
+                                minLength={8}
+                            />
+                        </label>
+                        <label className="text-[12px] font-semibold text-slate-700">
+                            Verify password
+                            <input
+                                type="password"
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                placeholder={editingId ? 'Repeat new password' : ''}
+                                value={form.password_confirmation}
+                                onChange={(event) => updateField('password_confirmation', event.target.value)}
+                                required={Boolean(form.password)}
+                                minLength={8}
+                            />
+                        </label>
+                        <label className="text-[12px] font-semibold text-slate-700">
+                            Role
+                            <select
+                                className="central-input mt-1 h-10 w-full rounded-[var(--border-radius-md)] border px-3 text-sm"
+                                value={form.role}
+                                onChange={(event) => updateField('role', event.target.value)}
+                            >
+                                {assignableRoles.map((role) => (
+                                    <option key={role} value={role}>
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="inline-flex items-center gap-2 self-end text-sm font-semibold text-slate-700">
                             <input
                                 type="checkbox"
                                 checked={Boolean(form.is_active)}
@@ -129,6 +245,13 @@ export function TenantUsersPage() {
                             Active user
                         </label>
                     </div>
+
+                    <p className="mt-2 text-[11px] text-slate-600">{roleHelpText}</p>
+                    {!canAssignAdminRole ? (
+                        <p className="mt-2 rounded-[var(--border-radius-md)] border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                            Admin role is hidden for this session. Sign in with the first admin account to create another admin.
+                        </p>
+                    ) : null}
 
                     {saveUserMutation.isError ? (
                         <p className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">
@@ -198,6 +321,11 @@ export function TenantUsersPage() {
                                             <td className="px-4 py-3">
                                                 <p className="font-semibold text-slate-900">{user.display_name}</p>
                                                 <p className="text-xs text-slate-500">{user.username} · {user.email || 'No email'}</p>
+                                                {firstAdminUserId !== null && user.id === firstAdminUserId ? (
+                                                    <p className="mt-1 inline-flex rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+                                                        First Admin
+                                                    </p>
+                                                ) : null}
                                             </td>
                                             <td className="px-4 py-3 text-slate-700">{user.role}</td>
                                             <td className="px-4 py-3">
@@ -214,18 +342,7 @@ export function TenantUsersPage() {
                                                     <button
                                                         type="button"
                                                         className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700"
-                                                        onClick={() => {
-                                                            setEditingId(user.id);
-                                                            setForm({
-                                                                username: user.username || '',
-                                                                firstname: user.firstname || '',
-                                                                lastname: user.lastname || '',
-                                                                email: user.email || '',
-                                                                password: '',
-                                                                role: user.role || 'Staff',
-                                                                is_active: Boolean(user.is_active),
-                                                            });
-                                                        }}
+                                                        onClick={() => beginEditUser(user)}
                                                     >
                                                         Edit
                                                     </button>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\AppUpdateService;
 use App\Services\CentralTenantService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,8 +11,10 @@ use Illuminate\Validation\Rule;
 
 class CentralInsightsController extends Controller
 {
-    public function __construct(private readonly CentralTenantService $centralTenantService)
-    {
+    public function __construct(
+        private readonly CentralTenantService $centralTenantService,
+        private readonly AppUpdateService $appUpdateService,
+    ) {
     }
 
     public function plansPricing(): JsonResponse
@@ -51,6 +54,13 @@ class CentralInsightsController extends Controller
     {
         return response()->json([
             'data' => $this->centralTenantService->systemHealthSnapshot(),
+        ]);
+    }
+
+    public function appUpdates(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->appUpdateService->latestRelease(),
         ]);
     }
 

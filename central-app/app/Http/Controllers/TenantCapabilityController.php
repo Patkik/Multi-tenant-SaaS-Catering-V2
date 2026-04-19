@@ -42,6 +42,7 @@ class TenantCapabilityController extends Controller
         $baseDomain = (string) Arr::first(config('tenancy.central_domains', ['localhost']));
         $user = $request->user();
         $activeRole = $user ? TenantRoles::resolveFromUser($user) : null;
+        $isActive = (bool) ($tenant->getAttribute('is_active') ?? true);
 
         return response()->json([
             'data' => [
@@ -62,6 +63,8 @@ class TenantCapabilityController extends Controller
                 'available_roles' => TenantRoles::all(),
                 'active_role' => $activeRole,
                 'is_authenticated' => (bool) $user,
+                'is_active' => $isActive,
+                'status' => $isActive ? 'active' : 'suspended',
             ],
         ]);
     }

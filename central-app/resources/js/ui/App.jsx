@@ -24,6 +24,7 @@ import { TenantPaymentsPage } from './pages/tenant/TenantPaymentsPage';
 import { TenantSettingsPage } from './pages/tenant/TenantSettingsPage';
 import { TenantStaffAssignmentsPage } from './pages/tenant/TenantStaffAssignmentsPage';
 import { TenantAnalyticsPage } from './pages/tenant/TenantAnalyticsPage';
+import { TenantUsersPage } from './pages/tenant/TenantUsersPage';
 
 function LoadingScreen() {
     return (
@@ -190,7 +191,14 @@ function TenantRoutes() {
                         </RequireTenantModule>
                     }
                 />
-                <Route path="/users" element={<Navigate to="/settings" replace />} />
+                <Route
+                    path="/users"
+                    element={
+                        <RequireTenantModule module="users">
+                            <TenantUsersPage />
+                        </RequireTenantModule>
+                    }
+                />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

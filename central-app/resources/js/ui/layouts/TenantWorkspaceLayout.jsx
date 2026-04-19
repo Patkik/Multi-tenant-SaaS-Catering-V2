@@ -32,6 +32,7 @@ const navigation = [
         feature: 'branding_controls',
         lockedReason: 'Branding controls are available on Business and Enterprise plans.',
     },
+    { to: '/users', label: 'Users', module: 'users' },
     { to: '/settings', label: 'Settings', module: 'users' },
 ];
 
