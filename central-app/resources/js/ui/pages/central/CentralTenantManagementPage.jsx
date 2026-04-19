@@ -142,7 +142,7 @@ export function CentralTenantManagementPage() {
                         type="search"
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Search business or subdomain"
+                        placeholder="Search business, subdomain, or DB name"
                         className="central-input h-9 min-w-[220px] flex-1 rounded-[var(--border-radius-md)] border px-3 text-[12px]"
                     />
                     <select
@@ -178,17 +178,19 @@ export function CentralTenantManagementPage() {
                 <div className="overflow-x-auto">
                     <table className="central-table w-full text-left text-[12px]" style={{ tableLayout: 'fixed' }}>
                         <colgroup>
-                            <col style={{ width: '26%' }} />
-                            <col style={{ width: '14%' }} />
-                            <col style={{ width: '10%' }} />
+                            <col style={{ width: '22%' }} />
                             <col style={{ width: '12%' }} />
-                            <col style={{ width: '14%' }} />
-                            <col style={{ width: '24%' }} />
+                            <col style={{ width: '18%' }} />
+                            <col style={{ width: '9%' }} />
+                            <col style={{ width: '10%' }} />
+                            <col style={{ width: '11%' }} />
+                            <col style={{ width: '18%' }} />
                         </colgroup>
                         <thead>
                             <tr>
                                 <th>Business Name</th>
                                 <th>Subdomain</th>
+                                <th>DB Name</th>
                                 <th>Plan</th>
                                 <th>Status</th>
                                 <th>Created</th>
@@ -198,21 +200,21 @@ export function CentralTenantManagementPage() {
                         <tbody>
                             {tenantsQuery.isPending ? (
                                 <tr>
-                                    <td colSpan={6} className="py-3 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                                    <td colSpan={7} className="py-3 text-center" style={{ color: 'var(--color-text-secondary)' }}>
                                         Loading tenants...
                                     </td>
                                 </tr>
                             ) : null}
                             {tenantsQuery.isError ? (
                                 <tr>
-                                    <td colSpan={6} className="py-3 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                                    <td colSpan={7} className="py-3 text-center" style={{ color: 'var(--color-text-secondary)' }}>
                                         Failed to load tenants.
                                     </td>
                                 </tr>
                             ) : null}
                             {!tenantsQuery.isPending && !tenantsQuery.isError && rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="py-3 text-center" style={{ color: 'var(--color-text-tertiary)' }}>
+                                    <td colSpan={7} className="py-3 text-center" style={{ color: 'var(--color-text-tertiary)' }}>
                                         No tenants found.
                                     </td>
                                 </tr>
@@ -227,6 +229,7 @@ export function CentralTenantManagementPage() {
                                     <tr key={tenant.tenant_id}>
                                         <td className="truncate">{tenant.company_name}</td>
                                         <td className="truncate">{tenant.subdomain}</td>
+                                        <td className="truncate">{tenant.db_name || '—'}</td>
                                         <td>
                                             <span
                                                 className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold"

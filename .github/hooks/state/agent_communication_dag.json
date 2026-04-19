@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated_at": "2026-04-19T17:08:05.606364Z",
+  "generated_at": "2026-04-19T17:23:10.926997Z",
   "metadata": {
     "agent_count": 10,
     "edges_count": 8,
@@ -108,12 +108,7 @@
   "edges": [
     {
       "source": "orchestrator",
-      "target": "test-automation",
-      "bidirectional": false
-    },
-    {
-      "source": "orchestrator",
-      "target": "researcher",
+      "target": "product-design-handoff",
       "bidirectional": false
     },
     {
@@ -123,17 +118,22 @@
     },
     {
       "source": "orchestrator",
-      "target": "product-design-handoff",
+      "target": "researcher",
       "bidirectional": false
     },
     {
       "source": "orchestrator",
-      "target": "context-manager",
+      "target": "test-automation",
       "bidirectional": false
     },
     {
       "source": "orchestrator",
       "target": "coder",
+      "bidirectional": false
+    },
+    {
+      "source": "orchestrator",
+      "target": "context-manager",
       "bidirectional": false
     },
     {

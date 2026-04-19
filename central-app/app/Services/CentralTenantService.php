@@ -546,9 +546,10 @@ class CentralTenantService
                 $status = $this->tenantStatusLabel($tenant);
                 $companyName = (string) ($tenant->getAttribute('company_name') ?? '');
                 $subdomain = (string) optional($tenant->domains->first())->domain;
+                $dbName = (string) ($tenant->database()->getName() ?? '');
 
                 if ($search !== '') {
-                    $haystack = Str::lower($companyName.' '.$subdomain.' '.$tenant->getTenantKey());
+                    $haystack = Str::lower($companyName.' '.$subdomain.' '.$dbName.' '.$tenant->getTenantKey());
                     if (! str_contains($haystack, Str::lower($search))) {
                         return false;
                     }
@@ -830,6 +831,7 @@ class CentralTenantService
             'tenant_id' => $tenant->getTenantKey(),
             'company_name' => $tenant->getAttribute('company_name'),
             'subdomain' => $subdomain,
+            'db_name' => $tenant->database()->getName(),
             'full_domain' => $subdomain ? sprintf('%s.%s', $subdomain, $baseDomain) : null,
             'plan' => $plan,
             'plan_details' => PlanFeatures::detailsForPlan($plan),
