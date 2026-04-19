@@ -17,7 +17,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'mysql'),
+    'default' => env('DB_CONNECTION', 'landlord'),
 
     /*
     |--------------------------------------------------------------------------
@@ -64,25 +64,102 @@ return [
             ]) : [],
         ],
 
-        'mysql_provisioning' => [
-            'driver' => 'mysql',
-            'url' => env('DB_PROVISIONING_URL'),
-            'host' => env('DB_PROVISIONING_HOST', '127.0.0.1'),
-            'port' => env('DB_PROVISIONING_PORT', '3306'),
-            'database' => env('DB_PROVISIONING_DATABASE', 'information_schema'),
-            'username' => env('DB_PROVISIONING_USERNAME', 'provisioner'),
-            'password' => env('DB_PROVISIONING_PASSWORD', ''),
-            'unix_socket' => env('DB_PROVISIONING_SOCKET', ''),
-            'charset' => env('DB_PROVISIONING_CHARSET', 'utf8mb4'),
-            'collation' => env('DB_PROVISIONING_COLLATION', 'utf8mb4_unicode_ci'),
-            'prefix' => '',
-            'prefix_indexes' => true,
-            'strict' => true,
-            'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
-        ],
+        'landlord' => env('DB_LANDLORD_DRIVER', 'mysql') === 'sqlite'
+            ? [
+                'driver' => 'sqlite',
+                'url' => env('DB_LANDLORD_URL'),
+                'database' => env('DB_LANDLORD_DATABASE', database_path('database.sqlite')),
+                'prefix' => '',
+                'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+                'busy_timeout' => null,
+                'journal_mode' => null,
+                'synchronous' => null,
+                'transaction_mode' => 'DEFERRED',
+            ]
+            : [
+                'driver' => env('DB_LANDLORD_DRIVER', 'mysql'),
+                'url' => env('DB_LANDLORD_URL'),
+                'host' => env('DB_LANDLORD_HOST', env('DB_HOST', '127.0.0.1')),
+                'port' => env('DB_LANDLORD_PORT', env('DB_PORT', '3306')),
+                'database' => env('DB_LANDLORD_DATABASE', 'caterpro_landlord'),
+                'username' => env('DB_LANDLORD_USERNAME', env('DB_USERNAME', 'root')),
+                'password' => env('DB_LANDLORD_PASSWORD', env('DB_PASSWORD', '')),
+                'unix_socket' => env('DB_LANDLORD_SOCKET', env('DB_SOCKET', '')),
+                'charset' => env('DB_LANDLORD_CHARSET', env('DB_CHARSET', 'utf8mb4')),
+                'collation' => env('DB_LANDLORD_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+                'prefix' => '',
+                'prefix_indexes' => true,
+                'strict' => true,
+                'engine' => null,
+                'options' => extension_loaded('pdo_mysql') ? array_filter([
+                    (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                ]) : [],
+            ],
+
+        'tenant_template' => env('DB_TENANT_DRIVER', 'mysql') === 'sqlite'
+            ? [
+                'driver' => 'sqlite',
+                'url' => env('DB_TENANT_URL'),
+                'database' => env('DB_TENANT_DATABASE', database_path('database.sqlite')),
+                'prefix' => '',
+                'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+                'busy_timeout' => null,
+                'journal_mode' => null,
+                'synchronous' => null,
+                'transaction_mode' => 'DEFERRED',
+            ]
+            : [
+                'driver' => env('DB_TENANT_DRIVER', 'mysql'),
+                'url' => env('DB_TENANT_URL'),
+                'host' => env('DB_TENANT_HOST', env('DB_HOST', '127.0.0.1')),
+                'port' => env('DB_TENANT_PORT', env('DB_PORT', '3306')),
+                'database' => env('DB_TENANT_DATABASE', null),
+                'username' => env('DB_TENANT_USERNAME', env('DB_USERNAME', 'root')),
+                'password' => env('DB_TENANT_PASSWORD', env('DB_PASSWORD', '')),
+                'unix_socket' => env('DB_TENANT_SOCKET', env('DB_SOCKET', '')),
+                'charset' => env('DB_TENANT_CHARSET', env('DB_CHARSET', 'utf8mb4')),
+                'collation' => env('DB_TENANT_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+                'prefix' => '',
+                'prefix_indexes' => true,
+                'strict' => true,
+                'engine' => null,
+                'options' => extension_loaded('pdo_mysql') ? array_filter([
+                    (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                ]) : [],
+            ],
+
+        // Reserved runtime tenant connection used by stancl/tenancy bootstrapping.
+        'tenant' => env('DB_TENANT_DRIVER', 'mysql') === 'sqlite'
+            ? [
+                'driver' => 'sqlite',
+                'url' => env('DB_TENANT_URL'),
+                'database' => env('DB_TENANT_DATABASE', database_path('database.sqlite')),
+                'prefix' => '',
+                'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+                'busy_timeout' => null,
+                'journal_mode' => null,
+                'synchronous' => null,
+                'transaction_mode' => 'DEFERRED',
+            ]
+            : [
+                'driver' => env('DB_TENANT_DRIVER', 'mysql'),
+                'url' => env('DB_TENANT_URL'),
+                'host' => env('DB_TENANT_HOST', env('DB_HOST', '127.0.0.1')),
+                'port' => env('DB_TENANT_PORT', env('DB_PORT', '3306')),
+                'database' => env('DB_TENANT_DATABASE', null),
+                'username' => env('DB_TENANT_USERNAME', env('DB_USERNAME', 'root')),
+                'password' => env('DB_TENANT_PASSWORD', env('DB_PASSWORD', '')),
+                'unix_socket' => env('DB_TENANT_SOCKET', env('DB_SOCKET', '')),
+                'charset' => env('DB_TENANT_CHARSET', env('DB_CHARSET', 'utf8mb4')),
+                'collation' => env('DB_TENANT_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+                'prefix' => '',
+                'prefix_indexes' => true,
+                'strict' => true,
+                'engine' => null,
+                'options' => extension_loaded('pdo_mysql') ? array_filter([
+                    (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                ]) : [],
+            ],
 
         'mariadb' => [
             'driver' => 'mariadb',

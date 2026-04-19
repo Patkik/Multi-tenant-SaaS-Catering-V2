@@ -1,33 +1,58 @@
 <?php
 
-use App\Http\Controllers\Api\Admin\FeatureController;
-use App\Http\Controllers\Api\Admin\RoleTemplateController;
-use App\Http\Controllers\Api\Admin\TenantController;
-use App\Http\Controllers\Api\Admin\TenantEffectiveFeatureController;
-use App\Http\Controllers\Api\Admin\TenantFeatureOverrideController;
-use App\Http\Controllers\Api\Admin\ApplyRoleTemplateToTenantController;
-use App\Http\Controllers\Api\Internal\UsageCaptureController;
+use App\Http\Controllers\CentralAuthController;
+use App\Http\Controllers\CentralDashboardController;
+use App\Http\Controllers\CentralInsightsController;
+use App\Http\Controllers\CentralTenantController;
+use App\Http\Controllers\HealthController;
+use App\Http\Controllers\TenantOnboardingController;
+use App\Support\CentralPermissions;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('admin')->middleware(['central.admin', 'throttle:60,1'])->group(function (): void {
-    Route::get('/features', [FeatureController::class, 'index']);
-    Route::get('/features/{feature}', [FeatureController::class, 'show']);
-    Route::post('/features', [FeatureController::class, 'store']);
-    Route::patch('/features/{feature}', [FeatureController::class, 'update']);
+Route::get('/', HealthController::class);
 
-    Route::get('/role-templates', [RoleTemplateController::class, 'index']);
-    Route::post('/role-templates', [RoleTemplateController::class, 'store']);
-    Route::patch('/role-templates/{roleTemplate}', [RoleTemplateController::class, 'update']);
+Route::post('/tenants/register', [TenantOnboardingController::class, 'store']);
 
-    Route::post('/tenants', [TenantController::class, 'store']);
-    Route::get('/tenants/{tenant}/effective-features', [TenantEffectiveFeatureController::class, 'index']);
-    Route::get('/tenants/{tenant}/feature-overrides', [TenantFeatureOverrideController::class, 'index']);
-    Route::put('/tenants/{tenant}/feature-overrides/{feature}', [TenantFeatureOverrideController::class, 'upsert']);
-    Route::delete('/tenants/{tenant}/feature-overrides/{feature}', [TenantFeatureOverrideController::class, 'destroy']);
-    Route::get('/tenants/{tenant}/monitoring', [TenantController::class, 'monitoring']);
-    Route::post('/tenants/{tenant}/role-templates/{roleTemplate}/apply', ApplyRoleTemplateToTenantController::class);
+Route::prefix('/central/auth')->group(function () {
+    Route::post('/login', [CentralAuthController::class, 'login']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/me', [CentralAuthController::class, 'me']);
+        Route::post('/logout', [CentralAuthController::class, 'logout']);
+    });
 });
 
-Route::prefix('internal')->middleware(['internal.usage', 'throttle:120,1'])->group(function (): void {
-    Route::post('/usage/capture', UsageCaptureController::class);
+Route::prefix('/central')->middleware('auth:sanctum')->group(function () {
+    Route::get('/dashboard', [CentralDashboardController::class, 'stats'])
+        ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+    Route::get('/plans', [CentralDashboardController::class, 'plans'])
+        ->middleware('permission:'.CentralPermissions::PLANS_VIEW);
+    Route::get('/plans-pricing', [CentralInsightsController::class, 'plansPricing'])
+        ->middleware('permission:'.CentralPermissions::PLANS_VIEW);
+    Route::get('/users', [CentralInsightsController::class, 'users'])
+        ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+    Route::patch('/users/{user}', [CentralInsightsController::class, 'updateUser'])
+        ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+    Route::get('/revenue-analytics', [CentralInsightsController::class, 'revenueAnalytics'])
+        ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+    Route::get('/system-health', [CentralInsightsController::class, 'systemHealth'])
+        ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+    Route::get('/audit-logs', [CentralInsightsController::class, 'auditLogs'])
+        ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+    Route::get('/tenants/subdomain-availability', [CentralTenantController::class, 'checkSubdomainAvailability'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
+
+    Route::get('/tenants', [CentralTenantController::class, 'index'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_VIEW);
+    Route::patch('/tenants/{tenant}/plan', [CentralTenantController::class, 'updatePlan'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
+    Route::patch('/tenants/{tenant}/branding', [CentralTenantController::class, 'updateBranding'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
+    Route::patch('/tenants/{tenant}/status', [CentralTenantController::class, 'updateStatus'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
 });
+
+Route::get('/user', function (Request $request) {
+    return $request->user();
+})->middleware('auth:sanctum');

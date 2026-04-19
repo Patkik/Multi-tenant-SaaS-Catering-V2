@@ -2,239 +2,91 @@
 
 namespace App\Services;
 
-use App\Contracts\TenantDatabaseProvisioner;
-use App\Exceptions\TenantProvisioningException;
 use App\Models\Tenant;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\DB;
-use RuntimeException;
-use Throwable;
+use App\Support\PlanFeatures;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Stancl\Tenancy\Database\Models\Domain;
 
 class TenantProvisioningService
 {
-    public function __construct(private readonly TenantDatabaseProvisioner $tenantDatabaseProvisioner)
+    public function provision(array $payload): array
     {
-    }
+        $subdomain = Str::lower((string) Arr::get($payload, 'subdomain'));
+        $baseDomain = $this->baseDomain();
+        $fullDomain = $subdomain.'.'.$baseDomain;
+        $normalizedPlan = PlanFeatures::normalizePlan((string) Arr::get($payload, 'plan', 'free'));
 
-    /**
-     * @param array<string, mixed> $payload
-     * @throws TenantProvisioningException
-     */
-    public function createTenant(array $payload): Tenant
-    {
-        /** @var Tenant $tenant */
-        $tenant = DB::transaction(function () use ($payload): Tenant {
-            return Tenant::query()->create([
-                'name' => $payload['name'],
-                'domain' => $payload['domain'],
-                'database_name' => $payload['database_name'],
-                'plan_code' => $payload['plan_code'] ?? null,
-                'plan_entitlements' => $payload['plan_entitlements'] ?? [],
-                'provisioning_status' => 'provisioning',
-                'provisioning_error' => null,
-                'provisioned_at' => null,
+        if (in_array($subdomain, config('tenancy.central_domains', []), true) || in_array($fullDomain, config('tenancy.central_domains', []), true)) {
+            throw ValidationException::withMessages([
+                'subdomain' => ['This subdomain is reserved for the central application.'],
             ]);
-        });
-
-        try {
-            $this->tenantDatabaseProvisioner->createDatabase((string) $tenant->database_name);
-            $this->runTenantMigrations($tenant);
-        } catch (Throwable $exception) {
-            try {
-                DB::transaction(function () use ($tenant, $exception): void {
-                    $tenant->forceFill([
-                        'provisioning_status' => 'failed',
-                        'provisioning_error' => $this->normalizeErrorMessage($exception),
-                        'provisioned_at' => null,
-                    ])->save();
-                });
-            } catch (Throwable) {
-                // Best-effort fallback only; preserve the original createDatabase failure signal.
-            }
-
-            throw new TenantProvisioningException('Tenant provisioning failed.', previous: $exception);
         }
 
-        try {
-            DB::transaction(function () use ($tenant): void {
-                $tenant->forceFill([
-                    'provisioning_status' => 'ready',
-                    'provisioning_error' => null,
-                    'provisioned_at' => now(),
-                ])->save();
-            });
-        } catch (Throwable $exception) {
-            try {
-                DB::transaction(function () use ($tenant, $exception): void {
-                    $tenant->forceFill([
-                        'provisioning_status' => 'failed',
-                        'provisioning_error' => $this->normalizeErrorMessage($exception),
-                        'provisioned_at' => null,
-                    ])->save();
-                });
-            } catch (Throwable) {
-                // Best-effort fallback only; preserve the original ready-state failure signal.
-            }
-
-            throw new TenantProvisioningException('Tenant provisioning failed.', previous: $exception);
+        if (Domain::query()->whereIn('domain', [$subdomain, $fullDomain])->exists()) {
+            throw ValidationException::withMessages([
+                'subdomain' => ['This subdomain is already taken.'],
+            ]);
         }
 
-        return $tenant->fresh();
-    }
+        $tenantId = $this->makeTenantId((string) Arr::get($payload, 'company_name'));
 
-    private function runTenantMigrations(Tenant $tenant): void
-    {
-        $connectionName = $this->resolveTenantRuntimeConnection($tenant);
-        $migrationPaths = $this->resolveTenantMigrationPaths();
-
-        $exitCode = Artisan::call('migrate', [
-            '--database' => $connectionName,
-            '--path' => $migrationPaths,
-            '--force' => true,
+        $tenant = Tenant::create([
+            'id' => $tenantId,
+            'company_name' => Arr::get($payload, 'company_name'),
+            'plan' => $normalizedPlan,
+            'enabled_features' => $this->defaultFeatures($normalizedPlan),
+            'client_access' => Arr::exists($payload, 'client_access')
+                ? (bool) Arr::get($payload, 'client_access')
+                : PlanFeatures::supportsClientPortal($normalizedPlan),
+            'branding' => [
+                'primary_color' => '#0B8F66',
+            ],
+            'admin' => [
+                'username' => Arr::get($payload, 'admin.username'),
+                'lastname' => Arr::get($payload, 'admin.lastname'),
+                'mi' => Arr::get($payload, 'admin.mi'),
+                'firstname' => Arr::get($payload, 'admin.firstname'),
+                // The password is hashed and persisted in metadata until tenant user provisioning is implemented.
+                'password_hash' => Hash::make((string) Arr::get($payload, 'admin.password')),
+            ],
         ]);
 
-        if ($exitCode !== 0) {
-            throw new RuntimeException(sprintf(
-                'Tenant migrations failed for database "%s": %s',
-                (string) $tenant->database_name,
-                trim(Artisan::output())
-            ));
-        }
-    }
+        $tenant->domains()->create([
+            // Subdomain identification middleware resolves tenants by subdomain key.
+            'domain' => $subdomain,
+        ]);
 
-    private function resolveTenantRuntimeConnection(Tenant $tenant): string
-    {
-        $runtimeConnection = (string) config('tenancy.runtime_connection', config('database.default'));
-        $runtimeConnectionAlias = (string) config('tenancy.runtime_connection_alias', 'tenant_runtime');
-
-        $runtimeConnectionConfig = config("database.connections.{$runtimeConnection}");
-
-        if (! is_array($runtimeConnectionConfig)) {
-            throw new RuntimeException(sprintf('Runtime tenant connection "%s" is not configured.', $runtimeConnection));
-        }
-
-        $runtimeConnectionConfig['database'] = (string) $tenant->database_name;
-
-        config(["database.connections.{$runtimeConnectionAlias}" => $runtimeConnectionConfig]);
-
-        DB::purge($runtimeConnectionAlias);
-        DB::connection($runtimeConnectionAlias)->getPdo();
-
-        return $runtimeConnectionAlias;
-    }
-
-    private function normalizeErrorMessage(Throwable $exception): string
-    {
-        $message = trim($exception->getMessage());
-
-        if ($message === '') {
-            return 'Unknown tenant database provisioning error.';
-        }
-
-        return mb_substr($message, 0, 2000);
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function resolveTenantMigrationPaths(): array
-    {
-        $configuredPaths = config('tenancy.tenant_migration_paths');
-
-        if (is_array($configuredPaths)) {
-            $resolvedConfiguredPaths = array_values(array_filter(array_map(
-                fn (mixed $path): ?string => $this->normalizeMigrationPath($path),
-                $configuredPaths
-            )));
-
-            if ($resolvedConfiguredPaths !== []) {
-                return $resolvedConfiguredPaths;
-            }
-        }
-
-        $tenantDirectories = [
-            database_path('migrations/tenant'),
-            database_path('migrations/tenants'),
+        return [
+            'tenant_id' => $tenantId,
+            'domain' => $fullDomain,
+            'plan' => $normalizedPlan,
+            'company_name' => Arr::get($payload, 'company_name'),
         ];
-
-        $resolvedTenantDirectories = array_values(array_filter(array_map(
-            fn (string $path): ?string => $this->normalizeMigrationPath($path),
-            $tenantDirectories
-        )));
-
-        if ($resolvedTenantDirectories !== []) {
-            return $resolvedTenantDirectories;
-        }
-
-        $explicitTenantMigrations = [
-            database_path('migrations/0001_01_01_000000_create_users_table.php'),
-            database_path('migrations/2026_03_31_001000_add_role_and_is_active_to_users_table.php'),
-            database_path('migrations/2026_03_31_001001_create_tenant_rbac_tables.php'),
-        ];
-
-        $resolvedExplicitMigrations = array_values(array_filter(array_map(
-            fn (string $path): ?string => $this->normalizeMigrationPath($path),
-            $explicitTenantMigrations
-        )));
-
-        if ($resolvedExplicitMigrations === []) {
-            throw new RuntimeException('No tenant migration paths were found for tenant provisioning.');
-        }
-
-        return $resolvedExplicitMigrations;
     }
 
-    private function normalizeMigrationPath(mixed $path): ?string
+    private function makeTenantId(string $companyName): string
     {
-        if (! is_string($path)) {
-            return null;
+        $slug = Str::slug($companyName);
+
+        if ($slug === '') {
+            $slug = 'tenant';
         }
 
-        $trimmedPath = trim($path);
-
-        if ($trimmedPath === '') {
-            return null;
-        }
-
-        $absolutePath = $this->isAbsolutePath($trimmedPath) ? $trimmedPath : base_path($trimmedPath);
-        $normalizedAbsolutePath = $this->normalizeFilesystemPath($absolutePath);
-
-        if (! file_exists($normalizedAbsolutePath)) {
-            return null;
-        }
-
-        $normalizedBasePath = $this->normalizeFilesystemPath(base_path());
-
-        return $this->pathStartsWith($normalizedAbsolutePath, $normalizedBasePath.DIRECTORY_SEPARATOR)
-            ? ltrim(mb_substr($normalizedAbsolutePath, mb_strlen($normalizedBasePath)), DIRECTORY_SEPARATOR)
-            : $normalizedAbsolutePath;
+        return Str::limit($slug, 24, '').'-'.Str::lower(Str::random(6));
     }
 
-    private function isAbsolutePath(string $path): bool
+    private function baseDomain(): string
     {
-        $hasWindowsDrivePrefix = strlen($path) >= 3
-            && ctype_alpha($path[0])
-            && $path[1] === ':'
-            && ($path[2] === '\\' || $path[2] === '/');
+        $domains = config('tenancy.central_domains', ['127.0.0.1']);
 
-        return str_starts_with($path, DIRECTORY_SEPARATOR)
-            || str_starts_with($path, '\\\\')
-            || $hasWindowsDrivePrefix;
+        return (string) Arr::first($domains);
     }
 
-    private function normalizeFilesystemPath(string $path): string
+    private function defaultFeatures(string $plan): array
     {
-        $normalizedPath = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, trim($path));
-
-        return rtrim($normalizedPath, DIRECTORY_SEPARATOR);
-    }
-
-    private function pathStartsWith(string $path, string $prefix): bool
-    {
-        if (DIRECTORY_SEPARATOR === '\\') {
-            return str_starts_with(mb_strtolower($path), mb_strtolower($prefix));
-        }
-
-        return str_starts_with($path, $prefix);
+        return PlanFeatures::forPlan($plan);
     }
 }
