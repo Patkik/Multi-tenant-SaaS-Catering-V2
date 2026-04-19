@@ -5,16 +5,20 @@ namespace App\Services;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\PlanFeatures;
+use App\Support\TenantRoles;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\LengthAwarePaginator as Paginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Stancl\Tenancy\Database\Models\Domain;
 
 class CentralTenantService
 {
@@ -583,6 +587,176 @@ class CentralTenantService
         );
     }
 
+    public function tenantEditContext(Tenant $tenant): array
+    {
+        $freshTenant = $tenant->fresh(['domains']) ?? $tenant->load('domains');
+
+        return [
+            'tenant' => $this->tenantPayload($freshTenant),
+            'available_plans' => collect($this->plansCatalog())
+                ->map(fn (array $plan) => [
+                    ...$plan,
+                    'default_features' => PlanFeatures::forPlan((string) $plan['key']),
+                ])
+                ->values()
+                ->all(),
+            'feature_catalog' => collect($this->featureLabelMap())
+                ->map(fn (string $label, string $key) => [
+                    'key' => $key,
+                    'label' => $label,
+                ])
+                ->values()
+                ->all(),
+            'available_roles' => TenantRoles::all(),
+            'users' => $this->tenantUsers($freshTenant),
+        ];
+    }
+
+    public function updateTenant(Tenant $tenant, array $attributes): Tenant
+    {
+        $tenant = $tenant->fresh(['domains']) ?? $tenant->load('domains');
+        $requestedPlan = Arr::get($attributes, 'plan', (string) ($tenant->getAttribute('plan') ?? 'free'));
+        $plan = PlanFeatures::normalizePlan((string) $requestedPlan);
+        $existingFeatures = $tenant->getAttribute('enabled_features');
+        $requestedFeatures = Arr::get($attributes, 'enabled_features', $existingFeatures);
+        $enabledFeatures = is_array($requestedFeatures) ? $requestedFeatures : PlanFeatures::forPlan($plan);
+        $enabledFeatures = $this->normalizeEnabledFeatures($enabledFeatures, $plan);
+        $currentDomainRecord = $tenant->domains->first();
+        $currentSubdomain = (string) ($currentDomainRecord?->domain ?? '');
+
+        if (array_key_exists('subdomain', $attributes)) {
+            $nextSubdomain = Str::lower((string) $attributes['subdomain']);
+
+            if ($nextSubdomain !== $currentSubdomain) {
+                $baseDomain = (string) Arr::first(config('tenancy.central_domains', ['127.0.0.1']));
+                $fullDomain = $nextSubdomain.'.'.$baseDomain;
+                $reservedDomains = (array) config('tenancy.central_domains', []);
+
+                if (in_array($nextSubdomain, $reservedDomains, true) || in_array($fullDomain, $reservedDomains, true)) {
+                    throw ValidationException::withMessages([
+                        'subdomain' => ['This subdomain is reserved for the central application.'],
+                    ]);
+                }
+
+                $exists = Domain::query()
+                    ->when($currentDomainRecord, fn ($query) => $query->whereKeyNot($currentDomainRecord->getKey()))
+                    ->whereIn('domain', [$nextSubdomain, $fullDomain])
+                    ->exists();
+
+                if ($exists) {
+                    throw ValidationException::withMessages([
+                        'subdomain' => ['This subdomain is already taken.'],
+                    ]);
+                }
+
+                if ($currentDomainRecord) {
+                    $currentDomainRecord->forceFill(['domain' => $nextSubdomain])->save();
+                } else {
+                    $tenant->domains()->create(['domain' => $nextSubdomain]);
+                }
+            }
+        }
+
+        if (array_key_exists('company_name', $attributes)) {
+            $tenant->setAttribute('company_name', $attributes['company_name']);
+        }
+
+        $tenant->setAttribute('plan', $plan);
+        $tenant->setAttribute('enabled_features', $enabledFeatures);
+        $tenant->setAttribute(
+            'client_access',
+            array_key_exists('client_access', $attributes)
+                ? (bool) $attributes['client_access']
+                : in_array(PlanFeatures::CLIENT_PORTAL, $enabledFeatures, true),
+        );
+
+        if (array_key_exists('is_active', $attributes)) {
+            $tenant->setAttribute('is_active', (bool) $attributes['is_active']);
+        }
+
+        $tenant->save();
+
+        return $tenant->fresh(['domains']);
+    }
+
+    public function tenantUsers(Tenant $tenant): array
+    {
+        return $this->runInTenantContext($tenant, function () {
+            return User::query()
+                ->with('roles')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (User $user) => $this->tenantUserPayload($user))
+                ->values()
+                ->all();
+        });
+    }
+
+    public function updateTenantUser(Tenant $tenant, int $userId, array $attributes): array
+    {
+        return $this->runInTenantContext($tenant, function () use ($userId, $attributes) {
+            $member = User::query()->with('roles')->findOrFail($userId);
+            $username = Arr::get($attributes, 'username');
+            $email = Arr::get($attributes, 'email');
+
+            if (is_string($username) && $username !== '' && $username !== $member->username) {
+                $usernameExists = User::query()
+                    ->where('id', '!=', $member->id)
+                    ->where('username', $username)
+                    ->exists();
+
+                if ($usernameExists) {
+                    throw ValidationException::withMessages([
+                        'username' => ['The username has already been taken.'],
+                    ]);
+                }
+            }
+
+            if (is_string($email) && $email !== '' && $email !== $member->email) {
+                $emailExists = User::query()
+                    ->where('id', '!=', $member->id)
+                    ->where('email', $email)
+                    ->exists();
+
+                if ($emailExists) {
+                    throw ValidationException::withMessages([
+                        'email' => ['The email has already been taken.'],
+                    ]);
+                }
+            }
+
+            $member->fill([
+                'name' => array_key_exists('firstname', $attributes) || array_key_exists('lastname', $attributes)
+                    ? trim((string) (($attributes['firstname'] ?? $member->firstname).' '.($attributes['lastname'] ?? $member->lastname)))
+                    : $member->name,
+                'username' => Arr::get($attributes, 'username', $member->username),
+                'firstname' => Arr::get($attributes, 'firstname', $member->firstname),
+                'lastname' => Arr::get($attributes, 'lastname', $member->lastname),
+                'mi' => array_key_exists('mi', $attributes) ? $attributes['mi'] : $member->mi,
+                'email' => array_key_exists('email', $attributes) ? $attributes['email'] : $member->email,
+                'is_active' => array_key_exists('is_active', $attributes) ? (bool) $attributes['is_active'] : $member->is_active,
+            ]);
+
+            $password = Arr::get($attributes, 'password');
+
+            if (is_string($password) && $password !== '') {
+                $member->password = Hash::make($password);
+            }
+
+            $member->save();
+
+            if (array_key_exists('role', $attributes)) {
+                $member->syncRoles([TenantRoles::normalize((string) $attributes['role'])]);
+            }
+
+            if (! $member->is_active) {
+                $member->tokens()->delete();
+            }
+
+            return $this->tenantUserPayload($member->fresh(['roles']) ?? $member);
+        });
+    }
+
     public function updatePlan(Tenant $tenant, string $plan): Tenant
     {
         $normalizedPlan = PlanFeatures::normalizePlan($plan);
@@ -697,6 +871,24 @@ class CentralTenantService
             ->map(fn (Collection $groupedTenants) => $groupedTenants->count());
     }
 
+    private function normalizeEnabledFeatures(array $enabledFeatures, string $plan): array
+    {
+        $knownFeatures = array_keys($this->featureLabelMap());
+
+        $normalized = collect($enabledFeatures)
+            ->map(fn ($feature) => (string) $feature)
+            ->filter(fn (string $feature) => in_array($feature, $knownFeatures, true))
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($normalized === []) {
+            return PlanFeatures::forPlan($plan);
+        }
+
+        return $normalized;
+    }
+
     private function featureFlags(string $plan, array $enabledFeatures): array
     {
         $knownFeatures = array_keys($this->featureLabelMap());
@@ -715,6 +907,37 @@ class CentralTenantService
             PlanFeatures::ADVANCED_ANALYTICS => 'Revenue analytics',
             PlanFeatures::BRANDING_CONTROLS => 'Branding controls',
         ];
+    }
+
+    private function tenantUserPayload(User $user): array
+    {
+        $role = TenantRoles::resolveFromUser($user);
+
+        return [
+            'id' => $user->id,
+            'username' => $user->username,
+            'firstname' => $user->firstname,
+            'lastname' => $user->lastname,
+            'display_name' => trim((string) (($user->firstname ?? '').' '.($user->lastname ?? ''))) ?: ($user->name ?? $user->username),
+            'email' => $user->email,
+            'is_active' => (bool) $user->is_active,
+            'role' => $role,
+            'roles' => $user->getRoleNames()->values()->all(),
+            'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
+            'modules' => TenantRoles::moduleCapabilities()[$role] ?? [],
+            'created_at' => optional($user->created_at)?->toIso8601String(),
+        ];
+    }
+
+    private function runInTenantContext(Tenant $tenant, callable $callback)
+    {
+        tenancy()->initialize($tenant);
+
+        try {
+            return $callback();
+        } finally {
+            tenancy()->end();
+        }
     }
 
     private function tenantIsActive(Tenant $tenant): bool

@@ -13,6 +13,8 @@ const links = [
     { to: '/central/audit-logs', label: 'Audit Logs' },
 ];
 
+const appVersion = import.meta.env.VITE_APP_VERSION || '0.0.0';
+
 export function CentralWorkspaceLayout() {
     const location = useLocation();
     const { centralAuthUser, centralSignOut } = useTenantContext();
@@ -132,7 +134,7 @@ export function CentralWorkspaceLayout() {
                             className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
                             style={{ borderColor: 'var(--color-border-tertiary)' }}
                         >
-                            v2.0.0
+                            v{appVersion}
                         </span>
                         <span
                             className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold"

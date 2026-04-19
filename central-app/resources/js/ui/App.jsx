@@ -9,6 +9,7 @@ import { CentralPlansPricingPage } from './pages/central/CentralPlansPricingPage
 import { CentralRegistrationWizardPage } from './pages/central/CentralRegistrationWizardPage';
 import { CentralRevenueAnalyticsPage } from './pages/central/CentralRevenueAnalyticsPage';
 import { CentralSystemHealthPage } from './pages/central/CentralSystemHealthPage';
+import { CentralTenantEditPage } from './pages/central/CentralTenantEditPage';
 import { CentralTenantManagementPage } from './pages/central/CentralTenantManagementPage';
 import { CentralUserManagementPage } from './pages/central/CentralUserManagementPage';
 import { TenantBookingWizardPage } from './pages/tenant/TenantBookingWizardPage';
@@ -58,6 +59,7 @@ function CentralRoutes() {
                 <Route index element={<Navigate to="/central/dashboard" replace />} />
                 <Route path="/central/dashboard" element={<CentralDashboardPage />} />
                 <Route path="/central/tenants" element={<CentralTenantManagementPage />} />
+                <Route path="/central/tenants/:tenantId/edit" element={<CentralTenantEditPage />} />
                 <Route path="/central/new-tenant" element={<CentralRegistrationWizardPage />} />
                 <Route path="/central/plans-pricing" element={<CentralPlansPricingPage />} />
                 <Route path="/central/user-management" element={<CentralUserManagementPage />} />

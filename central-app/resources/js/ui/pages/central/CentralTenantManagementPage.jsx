@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchCentralTenants, updateTenantStatus } from '../../../api/centralApi';
 
@@ -252,6 +252,13 @@ export function CentralTenantManagementPage() {
                                                 >
                                                     View
                                                 </button>
+                                                <Link
+                                                    to={`/central/tenants/${tenant.tenant_id}/edit`}
+                                                    className="rounded-[var(--border-radius-md)] border px-2 py-1 text-[11px]"
+                                                    style={{ borderColor: 'var(--color-border-tertiary)' }}
+                                                >
+                                                    Edit
+                                                </Link>
                                                 <button
                                                     type="button"
                                                     onClick={() =>

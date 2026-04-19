@@ -45,6 +45,14 @@ Route::prefix('/central')->middleware('auth:sanctum')->group(function () {
 
     Route::get('/tenants', [CentralTenantController::class, 'index'])
         ->middleware('permission:'.CentralPermissions::TENANTS_VIEW);
+    Route::get('/tenants/{tenant}', [CentralTenantController::class, 'show'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
+    Route::patch('/tenants/{tenant}', [CentralTenantController::class, 'update'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
+    Route::get('/tenants/{tenant}/users', [CentralTenantController::class, 'users'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
+    Route::patch('/tenants/{tenant}/users/{userId}', [CentralTenantController::class, 'updateUser'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
     Route::patch('/tenants/{tenant}/plan', [CentralTenantController::class, 'updatePlan'])
         ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
     Route::patch('/tenants/{tenant}/branding', [CentralTenantController::class, 'updateBranding'])

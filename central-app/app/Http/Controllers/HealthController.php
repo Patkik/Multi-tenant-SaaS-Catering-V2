@@ -14,7 +14,7 @@ class HealthController extends Controller
         return response()->json([
             'status' => 'ok',
             'name' => 'CaterPro API',
-            'version' => '1.0.0',
+            'version' => (string) config('app.version', '0.0.0'),
             'environment' => app()->environment(),
             'endpoints' => [
                 'health' => url('/'),

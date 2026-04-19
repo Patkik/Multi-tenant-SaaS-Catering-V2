@@ -97,6 +97,30 @@ export async function fetchCentralTenants({ page = 1, perPage = 15, search = '',
     return response.data.data;
 }
 
+export async function fetchCentralTenantEditContext(tenantId) {
+    const response = await http.get(`/api/central/tenants/${tenantId}`);
+
+    return response.data.data;
+}
+
+export async function updateCentralTenant(tenantId, payload) {
+    const response = await http.patch(`/api/central/tenants/${tenantId}`, payload);
+
+    return response.data.data;
+}
+
+export async function fetchCentralTenantUsers(tenantId) {
+    const response = await http.get(`/api/central/tenants/${tenantId}/users`);
+
+    return response.data.data;
+}
+
+export async function updateCentralTenantUser(tenantId, userId, payload) {
+    const response = await http.patch(`/api/central/tenants/${tenantId}/users/${userId}`, payload);
+
+    return response.data.data;
+}
+
 export async function registerTenant(payload) {
     const response = await http.post('/api/tenants/register', payload);
 
@@ -125,10 +149,11 @@ export async function updateTenantStatus(tenantId, isActive) {
     return response.data.data;
 }
 
-export async function checkCentralSubdomainAvailability(subdomain) {
+export async function checkCentralSubdomainAvailability(subdomain, tenantId = null) {
     const response = await http.get('/api/central/tenants/subdomain-availability', {
         params: {
             subdomain,
+            tenant_id: tenantId || undefined,
         },
     });
 

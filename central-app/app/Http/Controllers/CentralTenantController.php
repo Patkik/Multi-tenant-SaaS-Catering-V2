@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\UpdateCentralTenantRequest;
+use App\Http\Requests\UpdateCentralTenantUserRequest;
 use App\Http\Requests\UpdateTenantBrandingRequest;
 use App\Http\Requests\UpdateTenantPlanRequest;
 use App\Models\Tenant;
@@ -31,6 +33,40 @@ class CentralTenantController extends Controller
                 'plan' => $plan,
                 'status' => $status,
             ]),
+        ]);
+    }
+
+    public function show(Tenant $tenant): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->centralTenantService->tenantEditContext($tenant),
+        ]);
+    }
+
+    public function update(UpdateCentralTenantRequest $request, Tenant $tenant): JsonResponse
+    {
+        $updatedTenant = $this->centralTenantService->updateTenant($tenant, $request->validated());
+
+        return response()->json([
+            'message' => 'Tenant details updated successfully.',
+            'data' => $this->centralTenantService->tenantPayload($updatedTenant),
+        ]);
+    }
+
+    public function users(Tenant $tenant): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->centralTenantService->tenantUsers($tenant),
+        ]);
+    }
+
+    public function updateUser(UpdateCentralTenantUserRequest $request, Tenant $tenant, int $userId): JsonResponse
+    {
+        $updatedUser = $this->centralTenantService->updateTenantUser($tenant, $userId, $request->validated());
+
+        return response()->json([
+            'message' => 'Tenant user updated successfully.',
+            'data' => $updatedUser,
         ]);
     }
 
@@ -72,16 +108,32 @@ class CentralTenantController extends Controller
     {
         $validated = $request->validate([
             'subdomain' => ['required', 'string', 'min:3', 'max:50', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
+            'tenant_id' => ['sometimes', 'string', 'exists:tenants,id'],
         ]);
 
         $subdomain = Str::lower((string) $validated['subdomain']);
         $baseDomain = (string) Arr::first(config('tenancy.central_domains', ['127.0.0.1']));
         $fullDomain = $subdomain.'.'.$baseDomain;
+        $tenantId = Arr::get($validated, 'tenant_id');
+        $tenantDomainIdsToIgnore = [];
+
+        if (is_string($tenantId) && $tenantId !== '') {
+            $tenantDomainIdsToIgnore = Tenant::query()
+                ->with('domains')
+                ->whereKey($tenantId)
+                ->first()
+                ?->domains
+                ->pluck('id')
+                ->all() ?? [];
+        }
 
         $isReserved = in_array($subdomain, config('tenancy.central_domains', []), true)
             || in_array($fullDomain, config('tenancy.central_domains', []), true);
 
-        $exists = Domain::query()->whereIn('domain', [$subdomain, $fullDomain])->exists();
+        $exists = Domain::query()
+            ->when($tenantDomainIdsToIgnore !== [], fn ($query) => $query->whereNotIn('id', $tenantDomainIdsToIgnore))
+            ->whereIn('domain', [$subdomain, $fullDomain])
+            ->exists();
 
         return response()->json([
             'data' => [
