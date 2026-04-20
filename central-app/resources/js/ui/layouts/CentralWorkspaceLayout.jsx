@@ -20,17 +20,17 @@ const buildTimeVersion = import.meta.env.VITE_APP_VERSION || '0.0.0';
 export function CentralWorkspaceLayout() {
     const location = useLocation();
     const { centralAuthUser, centralSignOut } = useTenantContext();
+    const [hasCheckedUpdates, setHasCheckedUpdates] = useState(false);
     const [updateFeedback, setUpdateFeedback] = useState(null);
     const appUpdatesQuery = useQuery({
         queryKey: ['central-app-updates'],
         queryFn: fetchCentralAppUpdates,
-        staleTime: 1000 * 60 * 5,
-        refetchInterval: 1000 * 60 * 5,
         retry: false,
+        enabled: false,
     });
     const applyUpdateMutation = useMutation({
         mutationFn: applyCentralAppUpdate,
-        onSuccess: (result) => {
+        onSuccess: async (result) => {
             const status = String(result?.status ?? 'info');
             const message = String(result?.message ?? 'Update action completed.');
 
@@ -39,7 +39,8 @@ export function CentralWorkspaceLayout() {
                 message,
             });
 
-            appUpdatesQuery.refetch();
+            setHasCheckedUpdates(true);
+            await appUpdatesQuery.refetch();
 
             if (status === 'manual_required' && result?.release_url) {
                 window.open(result.release_url, '_blank', 'noopener,noreferrer');
@@ -78,11 +79,12 @@ export function CentralWorkspaceLayout() {
             .join('') || 'CA';
     }, [adminName]);
 
-    const updateInfo = appUpdatesQuery.data;
+    const updateInfo = hasCheckedUpdates ? appUpdatesQuery.data : null;
     const hasAvailableUpdate = Boolean(updateInfo?.enabled && updateInfo?.update_available);
     const latestVersionLabel = updateInfo?.latest_tag || updateInfo?.latest_version;
     const displayedVersion = updateInfo?.current_version || buildTimeVersion;
     const canApplyAutomatically = Boolean(updateInfo?.can_apply);
+    const isCheckingUpdates = appUpdatesQuery.fetchStatus === 'fetching';
     const isApplyingUpdate = applyUpdateMutation.isPending;
 
     const updateFeedbackStyle = useMemo(() => {
@@ -116,6 +118,40 @@ export function CentralWorkspaceLayout() {
     const handleApplyUpdate = () => {
         setUpdateFeedback(null);
         applyUpdateMutation.mutate();
+    };
+
+    const handleCheckForUpdates = async () => {
+        setUpdateFeedback(null);
+
+        const result = await appUpdatesQuery.refetch();
+        setHasCheckedUpdates(true);
+
+        if (result.error) {
+            const message = String(result.error?.response?.data?.message || 'Failed to check for updates.');
+
+            setUpdateFeedback({
+                status: 'failed',
+                message,
+            });
+
+            return;
+        }
+
+        if (!result.data?.enabled) {
+            setUpdateFeedback({
+                status: 'manual_required',
+                message: String(result.data?.error || 'Update checks are not configured yet.'),
+            });
+
+            return;
+        }
+
+        if (!result.data?.update_available) {
+            setUpdateFeedback({
+                status: 'up_to_date',
+                message: 'No new release found. This system is up to date.',
+            });
+        }
     };
 
     return (
@@ -212,6 +248,20 @@ export function CentralWorkspaceLayout() {
                         >
                             v{displayedVersion}
                         </span>
+                        <button
+                            type="button"
+                            onClick={handleCheckForUpdates}
+                            disabled={isCheckingUpdates || isApplyingUpdate}
+                            className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                            style={{
+                                borderColor: '#378ADD',
+                                backgroundColor: '#E6F1FB',
+                                color: '#0C447C',
+                            }}
+                            title="Check whether a newer release is available"
+                        >
+                            {isCheckingUpdates ? 'Checking...' : 'Check for Update'}
+                        </button>
                         {hasAvailableUpdate ? (
                             <span
                                 className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
