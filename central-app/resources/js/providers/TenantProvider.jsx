@@ -17,7 +17,10 @@ export function TenantProvider({ children }) {
         queryKey: ['tenant-capabilities'],
         queryFn: fetchTenantCapabilities,
         retry: false,
-        staleTime: 1000 * 60 * 5,
+        staleTime: 1000 * 30,
+        refetchOnWindowFocus: true,
+        refetchInterval: (query) => (query.state.status === 'success' ? 1000 * 15 : false),
+        refetchIntervalInBackground: true,
     });
 
     const centralModeFallback = tenantQuery.isError && isTenantContextFallbackError(tenantQuery.error);

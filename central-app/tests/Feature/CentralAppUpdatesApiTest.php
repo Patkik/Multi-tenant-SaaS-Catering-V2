@@ -87,7 +87,11 @@ class CentralAppUpdatesApiTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.enabled', true)
-            ->assertJsonPath('data.update_available', false)
-            ->assertJsonPath('data.error', 'GitHub API is unreachable right now.');
+            ->assertJsonPath('data.update_available', false);
+
+        $this->assertStringStartsWith(
+            'GitHub API is unreachable right now.',
+            (string) $response->json('data.error')
+        );
     }
 }

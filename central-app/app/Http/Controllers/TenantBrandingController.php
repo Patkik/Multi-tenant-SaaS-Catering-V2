@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\UpdateTenantBrandingRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 
 class TenantBrandingController extends Controller
 {
@@ -70,6 +71,24 @@ class TenantBrandingController extends Controller
         }
 
         $normalizedBranding = $this->normalizeBranding($branding);
+        $uploadedLogoPath = null;
+        $uploadedLogoUrl = null;
+
+        if ($request->hasFile('logo_file')) {
+            $logoFile = $request->file('logo_file');
+
+            if ($logoFile !== null) {
+                $existingLogoPath = Arr::get($normalizedBranding, 'logo_path');
+
+                if (is_string($existingLogoPath) && $existingLogoPath !== '') {
+                    Storage::disk('public')->delete($existingLogoPath);
+                }
+
+                $tenantKey = (string) $tenant->getTenantKey();
+                $uploadedLogoPath = $logoFile->store("tenant-branding/{$tenantKey}", 'public');
+                $uploadedLogoUrl = Storage::disk('public')->url($uploadedLogoPath);
+            }
+        }
 
         if (array_key_exists('company_name', $validated)) {
             $tenant->setAttribute('company_name', $validated['company_name']);
@@ -104,6 +123,11 @@ class TenantBrandingController extends Controller
                 ? $this->normalizeSections($validated['homepage_sections'])
                 : Arr::get($normalizedBranding, 'homepage_sections', self::DEFAULT_HOMEPAGE_SECTIONS),
         ];
+
+        if ($uploadedLogoPath !== null && $uploadedLogoUrl !== null) {
+            $nextBranding['logo_url'] = $uploadedLogoUrl;
+            $nextBranding['logo_path'] = $uploadedLogoPath;
+        }
 
         $tenant->setAttribute('branding', $nextBranding);
 

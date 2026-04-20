@@ -38,10 +38,10 @@ Route::middleware([
     Route::prefix('/api/tenant')->group(function () {
         Route::get('/capabilities', TenantCapabilityController::class);
         Route::get('/auth/registration-policy', [TenantAuthController::class, 'registrationPolicy']);
-        Route::post('/auth/login', [TenantAuthController::class, 'login']);
-        Route::post('/auth/register', [TenantAuthController::class, 'register']);
+        Route::post('/auth/login', [TenantAuthController::class, 'login'])->middleware('tenant.active');
+        Route::post('/auth/register', [TenantAuthController::class, 'register'])->middleware('tenant.active');
 
-        Route::middleware('auth:sanctum')->group(function () {
+        Route::middleware(['auth:sanctum', 'tenant.active'])->group(function () {
             Route::get('/auth/me', [TenantAuthController::class, 'me']);
             Route::post('/auth/logout', [TenantAuthController::class, 'logout']);
 
@@ -71,6 +71,7 @@ Route::middleware([
 
             Route::middleware(['tenant.feature:event_management', 'permission:events.manage'])->group(function () {
                 Route::post('/events', [TenantEventController::class, 'store']);
+                Route::patch('/events/{event}/status', [TenantEventController::class, 'updateStatus']);
             });
 
             Route::middleware(['permission:payments.view'])->group(function () {

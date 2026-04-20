@@ -206,10 +206,16 @@ function TenantRoutes() {
 }
 
 function RequireTenantAuth({ children }) {
-    const { isAuthenticated, isAuthLoading } = useTenantContext();
+    const { isAuthenticated, isAuthLoading, tenantProfile } = useTenantContext();
+    const tenantIsSuspended =
+        tenantProfile?.is_active === false || String(tenantProfile?.status ?? '').toLowerCase() === 'suspended';
 
     if (isAuthLoading) {
         return <LoadingScreen />;
+    }
+
+    if (tenantIsSuspended) {
+        return <Navigate to="/login" replace />;
     }
 
     if (!isAuthenticated) {

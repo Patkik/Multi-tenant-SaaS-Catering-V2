@@ -1,0 +1,65 @@
+name: Version Tag Sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - central-app/package.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-tag-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-version-tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION="$(python -c \"import json, pathlib; print(json.loads(pathlib.Path('central-app/package.json').read_text(encoding='utf-8')).get('version', ''))\")"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "central-app/package.json is missing a version field." >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag when missing
+        shell: bash
+        run: |
+          TAG="${{ steps.app_version.outputs.tag }}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists on origin."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release ${TAG#v}"
+          git push origin "refs/tags/$TAG"
+
+      - name: Ensure GitHub release exists
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.app_version.outputs.tag }}
+          name: ${{ steps.app_version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

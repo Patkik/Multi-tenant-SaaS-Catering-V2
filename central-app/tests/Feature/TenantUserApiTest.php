@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\EnsureTenantIsActive;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\TenantRoles;
@@ -224,6 +225,48 @@ class TenantUserApiTest extends TestCase
         $this->assertDatabaseMissing('users', [
             'email' => 'public.admin@example.com',
         ]);
+    }
+
+    public function test_suspended_tenant_blocks_auth_login_with_exact_reason(): void
+    {
+        $this->tenant->setAttribute('is_active', false);
+        $this->tenant->save();
+
+        User::query()->create([
+            'name' => 'Suspended Tenant User',
+            'username' => 'suspended.user',
+            'firstname' => 'Suspended',
+            'lastname' => 'User',
+            'email' => 'suspended.user@example.com',
+            'password' => Hash::make('password123'),
+            'is_active' => true,
+        ]);
+
+        $response = $this->postJson('/api/tenant/auth/login', [
+            'identity' => 'suspended.user',
+            'password' => 'password123',
+        ]);
+
+        $response
+            ->assertStatus(403)
+            ->assertJsonPath('message', EnsureTenantIsActive::suspensionMessage())
+            ->assertJsonPath('reason_code', 'tenant_suspended')
+            ->assertJsonPath('status', 'suspended');
+    }
+
+    public function test_capabilities_exposes_suspension_reason_for_frontend_toast(): void
+    {
+        $this->tenant->setAttribute('is_active', false);
+        $this->tenant->save();
+
+        $response = $this->getJson('/api/tenant/capabilities');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.is_active', false)
+            ->assertJsonPath('data.status', 'suspended')
+            ->assertJsonPath('data.access_restriction_code', 'tenant_suspended')
+            ->assertJsonPath('data.access_restriction_reason', EnsureTenantIsActive::suspensionMessage());
     }
 
     private function ensureTenantTables(): void

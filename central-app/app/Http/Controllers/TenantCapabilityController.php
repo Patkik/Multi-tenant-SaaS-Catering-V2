@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\EnsureTenantIsActive;
 use App\Support\PlanFeatures;
 use App\Support\TenantRoles;
 use Illuminate\Http\Request;
@@ -65,6 +66,8 @@ class TenantCapabilityController extends Controller
                 'is_authenticated' => (bool) $user,
                 'is_active' => $isActive,
                 'status' => $isActive ? 'active' : 'suspended',
+                'access_restriction_reason' => $isActive ? null : EnsureTenantIsActive::suspensionMessage(),
+                'access_restriction_code' => $isActive ? null : 'tenant_suspended',
             ],
         ]);
     }

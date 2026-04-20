@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { fetchTenantBranding, updateTenantBranding } from '../../../api/tenantApi';
 import { useTenantContext } from '../../../providers/TenantProvider';
@@ -28,6 +28,9 @@ const defaultSections = [
     { id: 'cta', label: 'Call To Action', enabled: true },
 ];
 
+const LOGO_PNG_MIME_TYPE = 'image/png';
+const MAX_LOGO_DIMENSION_PX = 600;
+
 function normalizeSections(sections) {
     if (!Array.isArray(sections) || sections.length === 0) {
         return defaultSections;
@@ -54,6 +57,28 @@ function mapBrandingToCustomizer(payload) {
     };
 }
 
+function loadImageDimensions(file) {
+    return new Promise((resolve, reject) => {
+        const previewUrl = URL.createObjectURL(file);
+        const image = new Image();
+
+        image.onload = () => {
+            resolve({
+                previewUrl,
+                width: image.width,
+                height: image.height,
+            });
+        };
+
+        image.onerror = () => {
+            URL.revokeObjectURL(previewUrl);
+            reject(new Error('Unable to read image metadata.'));
+        };
+
+        image.src = previewUrl;
+    });
+}
+
 export function TenantAppearancePage() {
     const { refreshProfile } = useTenantContext();
     const [panel, setPanel] = useState('brand');
@@ -62,6 +87,10 @@ export function TenantAppearancePage() {
     const [sections, setSections] = useState(defaultSections);
     const [savedSections, setSavedSections] = useState(defaultSections);
     const [publishedAt, setPublishedAt] = useState('');
+    const [logoUploadFile, setLogoUploadFile] = useState(null);
+    const [logoUploadPreviewUrl, setLogoUploadPreviewUrl] = useState('');
+    const [logoUploadError, setLogoUploadError] = useState('');
+    const logoFileInputRef = useRef(null);
 
     const brandingQuery = useQuery({
         queryKey: ['tenant-branding'],
@@ -79,6 +108,7 @@ export function TenantAppearancePage() {
             const normalizedSections = normalizeSections(payload?.homepage_sections);
             setSections(normalizedSections);
             setSavedSections(normalizedSections);
+            clearPendingLogoUpload();
             await refreshProfile();
         },
     });
@@ -92,8 +122,17 @@ export function TenantAppearancePage() {
             const normalizedSections = normalizeSections(brandingQuery.data?.homepage_sections);
             setSections(normalizedSections);
             setSavedSections(normalizedSections);
+            clearPendingLogoUpload();
         }
     }, [brandingQuery.data]);
+
+    useEffect(() => {
+        return () => {
+            if (logoUploadPreviewUrl) {
+                URL.revokeObjectURL(logoUploadPreviewUrl);
+            }
+        };
+    }, [logoUploadPreviewUrl]);
 
     const enabledSectionCount = sections.filter((section) => section.enabled).length;
 
@@ -105,11 +144,107 @@ export function TenantAppearancePage() {
         };
     }, [customizer.body_font, customizer.card_radius, customizer.primary_color]);
 
+    const previewLogoUrl = logoUploadPreviewUrl || customizer.logo_url;
+
     function updateField(key, value) {
         setCustomizer((previous) => ({
             ...previous,
             [key]: value,
         }));
+    }
+
+    function clearPendingLogoUpload() {
+        setLogoUploadFile(null);
+        setLogoUploadError('');
+        setLogoUploadPreviewUrl((current) => {
+            if (current) {
+                URL.revokeObjectURL(current);
+            }
+
+            return '';
+        });
+
+        if (logoFileInputRef.current) {
+            logoFileInputRef.current.value = '';
+        }
+    }
+
+    async function handleLogoFileChange(event) {
+        const file = event.target.files?.[0];
+
+        if (!file) {
+            clearPendingLogoUpload();
+            return;
+        }
+
+        if (file.type !== LOGO_PNG_MIME_TYPE) {
+            clearPendingLogoUpload();
+            setLogoUploadError('Only PNG files are allowed.');
+            return;
+        }
+
+        try {
+            const { previewUrl, width, height } = await loadImageDimensions(file);
+
+            if (width > MAX_LOGO_DIMENSION_PX || height > MAX_LOGO_DIMENSION_PX) {
+                URL.revokeObjectURL(previewUrl);
+                clearPendingLogoUpload();
+                setLogoUploadError(`Logo must be ${MAX_LOGO_DIMENSION_PX}x${MAX_LOGO_DIMENSION_PX}px or smaller.`);
+                return;
+            }
+
+            setLogoUploadPreviewUrl((current) => {
+                if (current) {
+                    URL.revokeObjectURL(current);
+                }
+
+                return previewUrl;
+            });
+            setLogoUploadFile(file);
+            setLogoUploadError('');
+        } catch {
+            clearPendingLogoUpload();
+            setLogoUploadError('Could not process the selected logo file.');
+        }
+    }
+
+    function buildCustomizerPayload() {
+        const payload = {
+            company_name: customizer.company_name,
+            primary_color: customizer.primary_color,
+            logo_url: customizer.logo_url,
+            logo_path: '',
+            heading_font: customizer.heading_font,
+            body_font: customizer.body_font,
+            layout_density: customizer.layout_density,
+            card_radius: customizer.card_radius,
+            hero_message: customizer.hero_message,
+            homepage_sections: sections,
+        };
+
+        if (!logoUploadFile) {
+            return payload;
+        }
+
+        const formData = new FormData();
+        formData.append('company_name', payload.company_name || '');
+        formData.append('primary_color', payload.primary_color || '');
+        formData.append('logo_url', payload.logo_url || '');
+        formData.append('logo_path', '');
+        formData.append('heading_font', payload.heading_font || '');
+        formData.append('body_font', payload.body_font || '');
+        formData.append('layout_density', payload.layout_density || '');
+        formData.append('card_radius', String(payload.card_radius));
+        formData.append('hero_message', payload.hero_message || '');
+        formData.append('logo_file', logoUploadFile);
+
+        payload.homepage_sections.forEach((section, index) => {
+            formData.append(`homepage_sections[${index}][id]`, section.id);
+            formData.append(`homepage_sections[${index}][label]`, section.label);
+            formData.append(`homepage_sections[${index}][enabled]`, section.enabled ? '1' : '0');
+        });
+
+        return formData;
     }
 
     function toggleSection(sectionId) {
@@ -149,34 +284,12 @@ export function TenantAppearancePage() {
     function saveDraft(event) {
         event.preventDefault();
 
-        saveCustomizerMutation.mutate({
-            company_name: customizer.company_name,
-            primary_color: customizer.primary_color,
-            logo_url: customizer.logo_url,
-            logo_path: '',
-            heading_font: customizer.heading_font,
-            body_font: customizer.body_font,
-            layout_density: customizer.layout_density,
-            card_radius: customizer.card_radius,
-            hero_message: customizer.hero_message,
-            homepage_sections: sections,
-        });
+        saveCustomizerMutation.mutate(buildCustomizerPayload());
     }
 
     function publishTheme() {
         saveCustomizerMutation.mutate(
-            {
-                company_name: customizer.company_name,
-                primary_color: customizer.primary_color,
-                logo_url: customizer.logo_url,
-                logo_path: '',
-                heading_font: customizer.heading_font,
-                body_font: customizer.body_font,
-                layout_density: customizer.layout_density,
-                card_radius: customizer.card_radius,
-                hero_message: customizer.hero_message,
-                homepage_sections: sections,
-            },
+            buildCustomizerPayload(),
             {
                 onSuccess: () => {
                     setPublishedAt(new Date().toLocaleString());
@@ -188,6 +301,7 @@ export function TenantAppearancePage() {
     function resetToSaved() {
         setCustomizer(savedSnapshot);
         setSections(savedSections);
+        clearPendingLogoUpload();
     }
 
     return (
@@ -244,13 +358,27 @@ export function TenantAppearancePage() {
                                 </label>
 
                                 <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    Logo Url
+                                    Logo Upload (PNG)
                                     <input
-                                        value={customizer.logo_url}
-                                        onChange={(event) => updateField('logo_url', event.target.value)}
+                                        ref={logoFileInputRef}
+                                        type="file"
+                                        accept="image/png"
+                                        onChange={handleLogoFileChange}
                                         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
                                     />
                                 </label>
+
+                                <p className="text-[11px] text-slate-500">PNG only. Max dimensions: 600x600 px.</p>
+
+                                {logoUploadFile ? (
+                                    <p className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                                        Selected logo: {logoUploadFile.name}
+                                    </p>
+                                ) : null}
+
+                                {logoUploadError ? (
+                                    <p className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{logoUploadError}</p>
+                                ) : null}
 
                                 <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     Hero Message
@@ -423,8 +551,8 @@ export function TenantAppearancePage() {
                         >
                             <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-3">
-                                    {customizer.logo_url ? (
-                                        <img src={customizer.logo_url} alt="Preview logo" className="h-11 w-11 rounded-xl border border-slate-200 object-cover" />
+                                    {previewLogoUrl ? (
+                                        <img src={previewLogoUrl} alt="Preview logo" className="h-11 w-11 rounded-xl border border-slate-200 object-cover" />
                                     ) : (
                                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--preview-accent)] text-sm font-bold text-white">
                                             {(customizer.company_name || 'C')[0]?.toUpperCase()}

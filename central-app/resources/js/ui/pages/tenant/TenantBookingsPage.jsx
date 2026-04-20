@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchTenantEvents } from '../../../api/tenantApi';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchTenantEvents, updateTenantEventStatus } from '../../../api/tenantApi';
 import { formatCurrency, formatNumber } from '../../../lib/formatters';
 import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -16,11 +16,12 @@ const boardColumns = [
 const statusOrder = boardColumns.map((column) => column.key);
 
 export function TenantBookingsPage() {
+    const queryClient = useQueryClient();
     const [statusFilter, setStatusFilter] = useState('all');
     const [monthFilter, setMonthFilter] = useState('');
     const [viewMode, setViewMode] = useState('kanban');
     const [searchTerm, setSearchTerm] = useState('');
-    const [statusOverrides, setStatusOverrides] = useState({});
+    const [statusUpdateError, setStatusUpdateError] = useState('');
 
     const eventsQuery = useQuery({
         queryKey: ['tenant-events', { statusFilter, monthFilter }],
@@ -34,12 +35,24 @@ export function TenantBookingsPage() {
 
     const events = useMemo(() => eventsQuery.data?.data ?? [], [eventsQuery.data]);
 
+    const updateStatusMutation = useMutation({
+        mutationFn: ({ eventId, status }) => updateTenantEventStatus(eventId, status),
+        onSuccess: async () => {
+            setStatusUpdateError('');
+            await queryClient.invalidateQueries({ queryKey: ['tenant-events'] });
+            await queryClient.invalidateQueries({ queryKey: ['tenant-analytics'] });
+        },
+        onError: (error) => {
+            setStatusUpdateError(error?.response?.data?.message ?? 'Unable to update booking status.');
+        },
+    });
+
     const normalizedEvents = useMemo(() => {
         return events.map((event) => ({
             ...event,
-            board_status: statusOverrides[event.id] ?? event.status ?? 'pending',
+            board_status: event.status ?? 'pending',
         }));
-    }, [events, statusOverrides]);
+    }, [events]);
 
     const filteredEvents = useMemo(() => {
         const query = searchTerm.trim().toLowerCase();
@@ -66,7 +79,7 @@ export function TenantBookingsPage() {
     const quotedPipeline = filteredEvents.reduce((carry, event) => carry + Number(event.quoted_total ?? 0), 0);
 
     function moveBooking(eventId, direction) {
-        const currentStatus = statusOverrides[eventId] ?? normalizedEvents.find((event) => event.id === eventId)?.board_status ?? 'pending';
+        const currentStatus = normalizedEvents.find((event) => event.id === eventId)?.board_status ?? 'pending';
         const currentIndex = statusOrder.indexOf(currentStatus);
 
         if (currentIndex < 0) {
@@ -81,10 +94,10 @@ export function TenantBookingsPage() {
 
         const nextStatus = statusOrder[nextIndex];
 
-        setStatusOverrides((previous) => ({
-            ...previous,
-            [eventId]: nextStatus,
-        }));
+        updateStatusMutation.mutate({
+            eventId,
+            status: nextStatus,
+        });
     }
 
     return (
@@ -178,6 +191,10 @@ export function TenantBookingsPage() {
                         </button>
                     </div>
                 </div>
+
+                {statusUpdateError ? (
+                    <p className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{statusUpdateError}</p>
+                ) : null}
             </section>
 
             {eventsQuery.isPending ? (
@@ -232,7 +249,7 @@ export function TenantBookingsPage() {
                                                         <button
                                                             type="button"
                                                             onClick={() => moveBooking(event.id, 'backward')}
-                                                            disabled={statusIndex <= 0}
+                                                            disabled={statusIndex <= 0 || updateStatusMutation.isPending}
                                                             className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
                                                             Previous
@@ -240,7 +257,7 @@ export function TenantBookingsPage() {
                                                         <button
                                                             type="button"
                                                             onClick={() => moveBooking(event.id, 'forward')}
-                                                            disabled={statusIndex >= statusOrder.length - 1}
+                                                            disabled={statusIndex >= statusOrder.length - 1 || updateStatusMutation.isPending}
                                                             className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
                                                             Next

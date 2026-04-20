@@ -98,6 +98,9 @@ export function TenantWorkspaceLayout() {
                     <div>
                         <p className="text-xs uppercase tracking-wide text-slate-500">Tenant Workspace</p>
                         <p className="font-semibold text-slate-900">{tenantProfile?.company_name ?? 'CaterPro Tenant'}</p>
+                        <span className="mt-1 inline-flex rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase leading-none text-slate-700">
+                            v{appVersion}
+                        </span>
                     </div>
                 </div>
 
@@ -167,9 +170,6 @@ export function TenantWorkspaceLayout() {
                             <h1 className="hero-heading text-2xl text-slate-900">{currentRole} Console</h1>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase leading-none text-slate-700">
-                                v{appVersion}
-                            </span>
                             <div className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">
                                 Features Enabled: {enabledFeatures.length}
                             </div>

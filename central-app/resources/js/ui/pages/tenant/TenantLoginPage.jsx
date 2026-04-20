@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { fetchTenantRegistrationPolicy, loginTenantUser, registerTenantAuthUser } from '../../../api/tenantApi';
@@ -19,7 +19,7 @@ const initialRegisterForm = {
 
 export function TenantLoginPage() {
     const navigate = useNavigate();
-    const { isAuthenticated, refreshAuth, updateAuthToken, clientAccess, tenantProfile } = useTenantContext();
+    const { isAuthenticated, refreshAuth, refreshProfile, updateAuthToken, clientAccess, tenantProfile } = useTenantContext();
     const [mode, setMode] = useState('login');
     const [identity, setIdentity] = useState('admin');
     const [password, setPassword] = useState('password123');
@@ -33,6 +33,23 @@ export function TenantLoginPage() {
 
     const registrationPolicy = registrationPolicyQuery.data;
     const tenantIsSuspended = tenantProfile?.is_active === false || String(tenantProfile?.status ?? '').toLowerCase() === 'suspended';
+    const suspensionReason =
+        tenantProfile?.access_restriction_reason ??
+        'Access denied: this tenant workspace is suspended in the central app. Access returns once the central admin restores this tenant.';
+
+    useEffect(() => {
+        if (!tenantIsSuspended) {
+            return;
+        }
+
+        const intervalId = window.setInterval(() => {
+            refreshProfile();
+        }, 10000);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [refreshProfile, tenantIsSuspended]);
 
     const availableRoles = useMemo(() => {
         const rolesFromPolicy = registrationPolicy?.available_roles ?? [];
@@ -72,12 +89,16 @@ export function TenantLoginPage() {
         },
     });
 
-    if (isAuthenticated) {
+    if (isAuthenticated && !tenantIsSuspended) {
         return <Navigate to="/" replace />;
     }
 
     function handleLoginSubmit(event) {
         event.preventDefault();
+
+        if (tenantIsSuspended) {
+            return;
+        }
 
         loginMutation.mutate({
             identity,
@@ -94,6 +115,10 @@ export function TenantLoginPage() {
 
     function handleRegisterSubmit(event) {
         event.preventDefault();
+
+        if (tenantIsSuspended) {
+            return;
+        }
 
         const selectedRole = availableRoles.includes(registerForm.role) ? registerForm.role : availableRoles[0] ?? 'Staff';
 
@@ -113,8 +138,18 @@ export function TenantLoginPage() {
         : 'Register the first tenant admin account. After setup, only the first admin can assign Admin to other users.';
 
     return (
-        <div className="mx-auto flex min-h-screen w-full max-w-5xl items-center px-4 py-8">
-            <div className="app-shell-panel w-full rounded-[2rem] p-7 md:p-10">
+        <>
+            {tenantIsSuspended ? (
+                <div className="pointer-events-none fixed inset-x-0 top-4 z-[80] flex justify-center px-4" role="alert" aria-live="assertive">
+                    <div className="pointer-events-auto w-full max-w-2xl rounded-2xl border border-rose-300 bg-rose-50/95 px-4 py-3 shadow-xl backdrop-blur-sm">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-800">Access blocked</p>
+                        <p className="mt-1 text-sm font-semibold text-rose-900">{suspensionReason}</p>
+                    </div>
+                </div>
+            ) : null}
+
+            <div className="mx-auto flex min-h-screen w-full max-w-5xl items-center px-4 py-8">
+                <div className="app-shell-panel w-full rounded-[2rem] p-7 md:p-10">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Tenant Access</p>
                 <h1 className="hero-heading mt-2 text-3xl text-slate-900 md:text-5xl">
                     {mode === 'login' ? 'Sign in to your catering command center.' : 'Register a tenant account.'}
@@ -127,7 +162,7 @@ export function TenantLoginPage() {
 
                 {tenantIsSuspended ? (
                     <p className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-900">
-                        Warning: This tenant account is currently suspended. Access is restricted until the central admin restores this tenant.
+                        {suspensionReason}
                     </p>
                 ) : null}
 
@@ -189,10 +224,10 @@ export function TenantLoginPage() {
 
                         <button
                             type="submit"
-                            disabled={loginMutation.isPending}
+                            disabled={loginMutation.isPending || tenantIsSuspended}
                             className="mt-2 rounded-full bg-[var(--primary-color)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
                         >
-                            {loginMutation.isPending ? 'Signing in...' : 'Sign In'}
+                            {tenantIsSuspended ? 'Tenant Suspended' : loginMutation.isPending ? 'Signing in...' : 'Sign In'}
                         </button>
                     </form>
                 ) : (
@@ -295,14 +330,15 @@ export function TenantLoginPage() {
 
                         <button
                             type="submit"
-                            disabled={registerMutation.isPending || registrationPolicyQuery.isPending}
+                            disabled={registerMutation.isPending || registrationPolicyQuery.isPending || tenantIsSuspended}
                             className="mt-1 rounded-full bg-[var(--primary-color)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
                         >
-                            {registerMutation.isPending ? 'Registering...' : 'Register'}
+                            {tenantIsSuspended ? 'Tenant Suspended' : registerMutation.isPending ? 'Registering...' : 'Register'}
                         </button>
                     </form>
                 )}
             </div>
-        </div>
+            </div>
+        </>
     );
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreTenantEventRequest;
+use App\Http\Requests\UpdateTenantEventStatusRequest;
 use App\Models\Client;
 use App\Models\TenantEvent;
 use App\Services\EventQuotaService;
@@ -130,5 +131,35 @@ class TenantEventController extends Controller
                 ],
             ],
         ], 201);
+    }
+
+    public function updateStatus(UpdateTenantEventStatusRequest $request, TenantEvent $event): JsonResponse
+    {
+        if (! tenant()) {
+            return response()->json([
+                'message' => 'Tenant context is required for this endpoint.',
+            ], 400);
+        }
+
+        $event->status = (string) $request->validated('status');
+        $event->save();
+        $event->load('client');
+
+        return response()->json([
+            'data' => [
+                'id' => $event->id,
+                'event_name' => $event->event_name,
+                'event_date' => optional($event->event_date)->toDateString(),
+                'location' => $event->location,
+                'guest_count' => $event->guest_count,
+                'status' => $event->status,
+                'quoted_total' => $event->quoted_total,
+                'client' => [
+                    'id' => $event->client?->id,
+                    'full_name' => trim(($event->client?->first_name ?? '').' '.($event->client?->last_name ?? '')),
+                    'email' => $event->client?->email,
+                ],
+            ],
+        ]);
     }
 }

@@ -64,6 +64,12 @@ export async function createTenantEvent(payload) {
     return response.data.data;
 }
 
+export async function updateTenantEventStatus(id, status) {
+    const response = await http.patch(`/api/tenant/events/${id}/status`, { status });
+
+    return response.data.data;
+}
+
 export async function fetchTenantClients(params = {}) {
     const response = await http.get('/api/tenant/clients', { params });
 
@@ -191,7 +197,14 @@ export async function fetchTenantBranding() {
 }
 
 export async function updateTenantBranding(payload) {
-    const response = await http.patch('/api/tenant/branding', payload);
+    const requestConfig = payload instanceof FormData
+        ? {
+              headers: {
+                  'Content-Type': 'multipart/form-data',
+              },
+          }
+        : undefined;
+    const response = await http.patch('/api/tenant/branding', payload, requestConfig);
 
     return response.data.data;
 }
