@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Support\CentralPermissions;
+use BadMethodCallException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -98,6 +99,34 @@ class CentralAppUpdatesApiTest extends TestCase
             'GitHub API is unreachable right now.',
             (string) $response->json('data.error')
         );
+    }
+
+    public function test_it_falls_back_to_direct_fetch_when_cache_store_cannot_tag(): void
+    {
+        config()->set('app.version', '2.0.2');
+        config()->set('services.app_updates.github_repository', 'Patik/Multi-tenant-SaaS-Catering-V2');
+
+        Cache::shouldReceive('remember')
+            ->once()
+            ->andThrow(new BadMethodCallException('This cache store does not support tagging.'));
+
+        Http::fake([
+            'https://api.github.com/repos/Patik/Multi-tenant-SaaS-Catering-V2/releases/latest' => Http::response([
+                'tag_name' => 'v2.1.0',
+                'name' => 'Version 2.1.0',
+                'html_url' => 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0',
+                'published_at' => now()->subMinute()->toIso8601String(),
+            ], 200),
+        ]);
+
+        $response = $this->getJson('/api/central/app-updates');
+
+        $response->assertOk()
+            ->assertJsonPath('data.current_version', '2.0.2')
+            ->assertJsonPath('data.latest_version', '2.1.0')
+            ->assertJsonPath('data.update_available', true);
+
+        Http::assertSentCount(1);
     }
 
     public function test_it_returns_manual_required_when_update_is_available_but_auto_command_is_missing(): void

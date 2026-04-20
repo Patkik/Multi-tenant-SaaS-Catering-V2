@@ -57,7 +57,7 @@ class TenantCapabilityController extends Controller
                 'company_name' => $tenant->getAttribute('company_name'),
                 'subdomain' => $subdomain,
                 'full_domain' => $subdomain ? sprintf('%s.%s', $subdomain, $baseDomain) : null,
-                'app_version' => (string) config('app.version', '0.0.0'),
+                'app_version' => $this->appUpdateService->currentVersion(),
                 'plan' => $plan,
                 'plan_details' => PlanFeatures::detailsForPlan($plan),
                 'enabled_features' => $enabledFeatures,

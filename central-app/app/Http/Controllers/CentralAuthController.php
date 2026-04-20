@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\CentralLoginRequest;
 use App\Models\User;
+use App\Services\AppUpdateService;
 use App\Support\CentralPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,6 +12,11 @@ use Illuminate\Support\Facades\Hash;
 
 class CentralAuthController extends Controller
 {
+    public function __construct(
+        private readonly AppUpdateService $appUpdateService,
+    ) {
+    }
+
     public function login(CentralLoginRequest $request): JsonResponse
     {
         $email = (string) $request->validated('email');
@@ -87,6 +93,7 @@ class CentralAuthController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'app_version' => $this->appUpdateService->currentVersion(),
             'is_active' => (bool) ($user->getAttribute('is_active') ?? true),
             'roles' => $user->getRoleNames()->values()->all(),
             'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),

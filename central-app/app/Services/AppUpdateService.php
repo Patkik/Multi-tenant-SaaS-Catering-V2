@@ -4,16 +4,38 @@ namespace App\Services;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 class AppUpdateService
 {
     private const OUTPUT_PREVIEW_MAX_LENGTH = 2000;
+    private const VERSION_STATE_PATH = 'app/system-release-version.txt';
+
+    public function currentVersion(): string
+    {
+        $configuredVersion = $this->normalizeVersion((string) config('app.version', '0.0.0'));
+
+        if (app()->environment('testing')) {
+            return $configuredVersion !== '' ? $configuredVersion : '0.0.0';
+        }
+
+        $persistedVersion = $this->readPersistedCurrentVersion();
+
+        if ($persistedVersion !== null) {
+            return $persistedVersion;
+        }
+
+        $initialVersion = $configuredVersion !== '' ? $configuredVersion : '0.0.0';
+        $this->persistCurrentVersion($initialVersion);
+
+        return $initialVersion;
+    }
 
     public function latestRelease(): array
     {
-        $currentVersion = (string) config('app.version', '0.0.0');
+        $currentVersion = $this->currentVersion();
         $repository = trim((string) config('services.app_updates.github_repository', ''));
         $applyMode = $this->resolveApplyMode();
         $canApply = $applyMode === 'command';
@@ -41,9 +63,7 @@ class AppUpdateService
         $cacheTtlSeconds = max((int) config('services.app_updates.cache_ttl', 300), 30);
         $cacheKey = $this->cacheKeyForRepository($repository);
 
-        $release = Cache::remember($cacheKey, now()->addSeconds($cacheTtlSeconds), function () use ($repository) {
-            return $this->fetchLatestGithubRelease($repository);
-        });
+        $release = $this->rememberLatestReleasePayload($cacheKey, $cacheTtlSeconds, $repository);
 
         if (! Arr::get($release, 'ok', false)) {
             return [
@@ -159,10 +179,16 @@ class AppUpdateService
             ];
         }
 
+        $appliedVersion = $this->normalizeVersion((string) (Arr::get($release, 'latest_tag') ?: Arr::get($release, 'latest_version')));
+
+        if ($appliedVersion !== '') {
+            $this->persistCurrentVersion($appliedVersion);
+        }
+
         $repository = trim((string) config('services.app_updates.github_repository', ''));
 
         if ($repository !== '') {
-            Cache::forget($this->cacheKeyForRepository($repository));
+            $this->forgetReleaseCache($this->cacheKeyForRepository($repository));
         }
 
         $refreshedRelease = $this->latestRelease();
@@ -273,6 +299,77 @@ class AppUpdateService
     private function cacheKeyForRepository(string $repository): string
     {
         return 'app-updates:github:'.sha1($repository);
+    }
+
+    private function rememberLatestReleasePayload(string $cacheKey, int $cacheTtlSeconds, string $repository): array
+    {
+        try {
+            return Cache::remember($cacheKey, now()->addSeconds($cacheTtlSeconds), function () use ($repository) {
+                return $this->fetchLatestGithubRelease($repository);
+            });
+        } catch (\Throwable) {
+            // Some environments (e.g. tenancy with file cache) cannot support tagged cache stores.
+            return $this->fetchLatestGithubRelease($repository);
+        }
+    }
+
+    private function forgetReleaseCache(string $cacheKey): void
+    {
+        try {
+            Cache::forget($cacheKey);
+        } catch (\Throwable) {
+            // Best effort cache eviction.
+        }
+    }
+
+    private function readPersistedCurrentVersion(): ?string
+    {
+        $path = $this->versionStateFilePath();
+
+        try {
+            if (! File::exists($path)) {
+                return null;
+            }
+
+            $storedVersion = trim((string) File::get($path));
+
+            if ($storedVersion === '') {
+                return null;
+            }
+
+            $normalizedVersion = $this->normalizeVersion($storedVersion);
+
+            return $normalizedVersion !== '' ? $normalizedVersion : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function persistCurrentVersion(string $version): void
+    {
+        if (app()->environment('testing')) {
+            return;
+        }
+
+        $normalizedVersion = $this->normalizeVersion($version);
+
+        if ($normalizedVersion === '') {
+            return;
+        }
+
+        $path = $this->versionStateFilePath();
+
+        try {
+            File::ensureDirectoryExists(dirname($path));
+            File::put($path, $normalizedVersion);
+        } catch (\Throwable) {
+            // Best effort persistence.
+        }
+    }
+
+    private function versionStateFilePath(): string
+    {
+        return storage_path(self::VERSION_STATE_PATH);
     }
 
     private function resolveApplyMode(): string

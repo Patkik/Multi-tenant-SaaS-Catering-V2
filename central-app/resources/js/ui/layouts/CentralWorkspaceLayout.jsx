@@ -82,7 +82,7 @@ export function CentralWorkspaceLayout() {
     const updateInfo = hasCheckedUpdates ? appUpdatesQuery.data : null;
     const hasAvailableUpdate = Boolean(updateInfo?.enabled && updateInfo?.update_available);
     const latestVersionLabel = updateInfo?.latest_tag || updateInfo?.latest_version;
-    const displayedVersion = updateInfo?.current_version || buildTimeVersion;
+    const displayedVersion = updateInfo?.current_version || centralAuthUser?.app_version || buildTimeVersion;
     const canApplyAutomatically = Boolean(updateInfo?.can_apply);
     const isCheckingUpdates = appUpdatesQuery.fetchStatus === 'fetching';
     const isApplyingUpdate = applyUpdateMutation.isPending;
