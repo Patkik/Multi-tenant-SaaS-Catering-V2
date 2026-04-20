@@ -108,6 +108,7 @@ class CentralTenantService
                     'key' => $plan,
                     'label' => $planConfig['label'],
                     'monthly_price' => $planConfig['monthly_price'],
+                    'user_limit' => $planConfig['user_limit'],
                     'monthly_active_event_limit' => $planConfig['monthly_active_event_limit'],
                     'features' => $planConfig['features'],
                 ];
@@ -137,7 +138,7 @@ class CentralTenantService
                     'monthly_price' => (int) $planConfig['monthly_price'],
                     'tenant_count' => $tenantCount,
                     'churn_rate' => $churnRate,
-                    'user_limit' => $this->userLimitByPlan($plan),
+                    'user_limit' => array_key_exists('user_limit', $planConfig) ? $planConfig['user_limit'] : null,
                     'monthly_active_event_limit' => $planConfig['monthly_active_event_limit'],
                     'features' => $planConfig['features'],
                 ];
@@ -162,6 +163,42 @@ class CentralTenantService
         return [
             'plans' => $plans->all(),
             'feature_matrix' => $featureMatrix,
+        ];
+    }
+
+    public function updatePlanDefinition(string $plan, array $attributes): array
+    {
+        $normalizedPlan = PlanFeatures::normalizePlan($plan);
+        $features = collect(Arr::get($attributes, 'features', []))
+            ->map(fn ($feature) => (string) $feature)
+            ->filter(fn (string $feature) => in_array($feature, PlanFeatures::allFeatures(), true))
+            ->unique()
+            ->values()
+            ->all();
+
+        $centralConnection = (string) config('tenancy.database.central_connection', config('database.default'));
+
+        DB::connection($centralConnection)
+            ->table('central_plan_overrides')
+            ->updateOrInsert(
+                ['plan_key' => $normalizedPlan],
+                [
+                    'monthly_price' => (int) Arr::get($attributes, 'monthly_price', 0),
+                    'user_limit' => Arr::get($attributes, 'user_limit'),
+                    'monthly_active_event_limit' => Arr::get($attributes, 'monthly_active_event_limit'),
+                    'features' => json_encode($features, JSON_THROW_ON_ERROR),
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ],
+            );
+
+        PlanFeatures::clearCache();
+
+        return [
+            'plan' => [
+                'key' => $normalizedPlan,
+                ...PlanFeatures::detailsForPlan($normalizedPlan),
+            ],
         ];
     }
 
@@ -960,17 +997,6 @@ class CentralTenantService
     private function tenantStatusLabel(Tenant $tenant): string
     {
         return $this->tenantIsActive($tenant) ? 'active' : 'suspended';
-    }
-
-    private function userLimitByPlan(string $plan): ?int
-    {
-        return match ($plan) {
-            'free' => 3,
-            'starter' => 10,
-            'business' => 25,
-            'enterprise' => null,
-            default => 3,
-        };
     }
 
     private function configuredServiceChecks(): Collection

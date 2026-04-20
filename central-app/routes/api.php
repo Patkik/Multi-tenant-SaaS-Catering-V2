@@ -30,6 +30,8 @@ Route::prefix('/central')->middleware('auth:sanctum')->group(function () {
         ->middleware('permission:'.CentralPermissions::PLANS_VIEW);
     Route::get('/plans-pricing', [CentralInsightsController::class, 'plansPricing'])
         ->middleware('permission:'.CentralPermissions::PLANS_VIEW);
+    Route::patch('/plans/{plan}', [CentralInsightsController::class, 'updatePlan'])
+        ->middleware('permission:'.CentralPermissions::TENANTS_MANAGE);
     Route::get('/users', [CentralInsightsController::class, 'users'])
         ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
     Route::patch('/users/{user}', [CentralInsightsController::class, 'updateUser'])

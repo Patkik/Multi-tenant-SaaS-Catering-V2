@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\UpdateCentralPlanRequest;
 use App\Models\User;
 use App\Services\AppUpdateService;
 use App\Services\CentralTenantService;
+use App\Support\PlanFeatures;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,6 +23,17 @@ class CentralInsightsController extends Controller
     {
         return response()->json([
             'data' => $this->centralTenantService->plansPricingOverview(),
+        ]);
+    }
+
+    public function updatePlan(UpdateCentralPlanRequest $request, string $plan): JsonResponse
+    {
+        if (! in_array($plan, PlanFeatures::planKeys(), true)) {
+            abort(422, 'Invalid plan key.');
+        }
+
+        return response()->json([
+            'data' => $this->centralTenantService->updatePlanDefinition($plan, $request->validated()),
         ]);
     }
 
