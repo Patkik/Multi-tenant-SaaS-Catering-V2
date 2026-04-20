@@ -21,6 +21,7 @@ import { TenantDashboardPage } from './pages/tenant/TenantDashboardPage';
 import { TenantLoginPage } from './pages/tenant/TenantLoginPage';
 import { TenantMenuBuilderPage } from './pages/tenant/TenantMenuBuilderPage';
 import { TenantPaymentsPage } from './pages/tenant/TenantPaymentsPage';
+import { TenantProfilePage } from './pages/tenant/TenantProfilePage';
 import { TenantSettingsPage } from './pages/tenant/TenantSettingsPage';
 import { TenantStaffAssignmentsPage } from './pages/tenant/TenantStaffAssignmentsPage';
 import { TenantAnalyticsPage } from './pages/tenant/TenantAnalyticsPage';
@@ -183,6 +184,7 @@ function TenantRoutes() {
                     }
                 />
                 <Route path="/payments" element={<Navigate to="/invoices" replace />} />
+                <Route path="/profile" element={<TenantProfilePage />} />
                 <Route
                     path="/settings"
                     element={

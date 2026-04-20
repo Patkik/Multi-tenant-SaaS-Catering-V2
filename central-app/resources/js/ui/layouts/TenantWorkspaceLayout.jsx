@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { applyTenantAppUpdate, fetchTenantAppUpdates } from '../../api/tenantApi';
@@ -85,6 +85,9 @@ export function TenantWorkspaceLayout() {
     const allowedModules = authUser?.modules ?? [];
     const tenantPermissions = authUser?.permissions ?? [];
     const currentRole = authUser?.role ?? tenantProfile?.active_role ?? 'Guest';
+    const signedInDisplayName = authUser?.display_name ?? 'Guest';
+    const signedInAvatarUrl = authUser?.avatar_url ?? '';
+    const signedInInitial = signedInDisplayName.trim().charAt(0)?.toUpperCase() || 'G';
     const displayedAppVersion = tenantProfile?.app_version || buildTimeVersion;
     const updateInfo = hasCheckedUpdates ? appUpdatesQuery.data : null;
     const hasAvailableUpdate = Boolean(updateInfo?.enabled && updateInfo?.update_available);
@@ -249,15 +252,39 @@ export function TenantWorkspaceLayout() {
 
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
                     <p className="text-xs uppercase tracking-wide text-slate-500">Signed in as</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{authUser?.display_name ?? 'Guest'}</p>
-                    <p className="text-xs text-slate-600">Role: {currentRole}</p>
-                    <button
-                        type="button"
-                        onClick={signOut}
-                        className="mt-3 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                        Sign Out
-                    </button>
+                    <div className="mt-2 flex items-center gap-3">
+                        {signedInAvatarUrl ? (
+                            <img
+                                src={signedInAvatarUrl}
+                                alt={`${signedInDisplayName} avatar`}
+                                className="h-10 w-10 rounded-full border border-slate-200 object-cover"
+                            />
+                        ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--primary-color)] text-sm font-semibold text-white">
+                                {signedInInitial}
+                            </div>
+                        )}
+                        <div>
+                            <p className="text-sm font-semibold text-slate-900">{signedInDisplayName}</p>
+                            <p className="text-xs text-slate-600">Role: {currentRole}</p>
+                        </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                        <Link
+                            to="/profile"
+                            onClick={() => setMobileSidebarOpen(false)}
+                            className="rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                        >
+                            Profile
+                        </Link>
+                        <button
+                            type="button"
+                            onClick={signOut}
+                            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Sign Out
+                        </button>
+                    </div>
                 </div>
 
                 <nav className="mt-5 space-y-2">

@@ -39,6 +39,19 @@ export async function fetchTenantMe() {
     return response.data.data;
 }
 
+export async function updateTenantProfile(payload) {
+    const requestConfig = payload instanceof FormData
+        ? {
+              headers: {
+                  'Content-Type': 'multipart/form-data',
+              },
+          }
+        : undefined;
+    const response = await http.patch('/api/tenant/auth/profile', payload, requestConfig);
+
+    return response.data.data;
+}
+
 export async function logoutTenantUser() {
     try {
         await http.post('/api/tenant/auth/logout');

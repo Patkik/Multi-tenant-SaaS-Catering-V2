@@ -138,6 +138,7 @@ class TenantUserController extends Controller
             'lastname' => $user->lastname,
             'display_name' => trim((string) (($user->firstname ?? '').' '.($user->lastname ?? ''))) ?: ($user->name ?? $user->username),
             'email' => $user->email,
+            'avatar_url' => $user->avatar_url,
             'is_active' => (bool) $user->is_active,
             'role' => $role,
             'roles' => $user->getRoleNames()->values()->all(),
