@@ -8,6 +8,7 @@ use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Permission\PermissionRegistrar;
 use Stancl\JobPipeline\JobPipeline;
 use Stancl\Tenancy\Events;
 use Stancl\Tenancy\Jobs;
@@ -59,11 +60,13 @@ class TenancyServiceProvider extends ServiceProvider
             Events\InitializingTenancy::class => [],
             Events\TenancyInitialized::class => [
                 Listeners\BootstrapTenancy::class,
+                [$this, 'bootstrapTenantPermissionCache'],
             ],
 
             Events\EndingTenancy::class => [],
             Events\TenancyEnded::class => [
                 Listeners\RevertToCentralContext::class,
+                [$this, 'restoreCentralPermissionCache'],
             ],
 
             Events\BootstrappingTenancy::class => [],
@@ -154,5 +157,46 @@ class TenancyServiceProvider extends ServiceProvider
                 return $event->tenant;
             })->shouldBeQueued(false), // `false` by default, but you probably want to make this `true` for production.
         ];
+    }
+
+    public function bootstrapTenantPermissionCache(): void
+    {
+        $tenant = tenant();
+
+        if (! is_object($tenant)) {
+            return;
+        }
+
+        $tenantKey = method_exists($tenant, 'getTenantKey')
+            ? (string) $tenant->getTenantKey()
+            : (string) ($tenant->id ?? '');
+
+        $baseCacheKey = $this->basePermissionCacheKey();
+        $cacheKey = $tenantKey !== '' ? $baseCacheKey.'.tenant.'.$tenantKey : $baseCacheKey;
+
+        $this->resetPermissionRegistrarState($cacheKey);
+    }
+
+    public function restoreCentralPermissionCache(): void
+    {
+        $this->resetPermissionRegistrarState($this->basePermissionCacheKey());
+    }
+
+    protected function resetPermissionRegistrarState(string $cacheKey): void
+    {
+        if (! class_exists(PermissionRegistrar::class)) {
+            return;
+        }
+
+        /** @var PermissionRegistrar $permissionRegistrar */
+        $permissionRegistrar = $this->app->make(PermissionRegistrar::class);
+        $permissionRegistrar->cacheKey = $cacheKey;
+        $permissionRegistrar->clearPermissionsCollection();
+        $permissionRegistrar->forgetCachedPermissions();
+    }
+
+    protected function basePermissionCacheKey(): string
+    {
+        return (string) config('permission.cache.key', 'spatie.permission.cache');
     }
 }

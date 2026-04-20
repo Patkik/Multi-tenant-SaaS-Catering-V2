@@ -36,6 +36,8 @@ const navigation = [
     { to: '/settings', label: 'Settings', module: 'users' },
 ];
 
+const appVersion = import.meta.env.VITE_APP_VERSION || '0.0.0';
+
 export function TenantWorkspaceLayout() {
     const { tenantProfile, authUser, signOut } = useTenantContext();
     const { mobileSidebarOpen, setMobileSidebarOpen, toggleMobileSidebar } = useAppStore();
@@ -164,8 +166,13 @@ export function TenantWorkspaceLayout() {
                             <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Current Role</p>
                             <h1 className="hero-heading text-2xl text-slate-900">{currentRole} Console</h1>
                         </div>
-                        <div className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">
-                            Features Enabled: {enabledFeatures.length}
+                        <div className="flex items-center gap-2">
+                            <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase leading-none text-slate-700">
+                                v{appVersion}
+                            </span>
+                            <div className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">
+                                Features Enabled: {enabledFeatures.length}
+                            </div>
                         </div>
                     </div>
                 </header>

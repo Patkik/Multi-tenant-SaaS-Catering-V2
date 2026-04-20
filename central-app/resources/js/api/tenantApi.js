@@ -196,6 +196,18 @@ export async function updateTenantBranding(payload) {
     return response.data.data;
 }
 
+export async function fetchTenantSettings() {
+    const response = await http.get('/api/tenant/settings');
+
+    return response.data.data;
+}
+
+export async function updateTenantSettings(payload) {
+    const response = await http.patch('/api/tenant/settings', payload);
+
+    return response.data.data;
+}
+
 export async function fetchTenantUsers(params = {}) {
     const response = await http.get('/api/tenant/users', { params });
 

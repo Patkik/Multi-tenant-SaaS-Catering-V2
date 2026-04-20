@@ -16,11 +16,15 @@ class CateringPackage extends Model
         'pricing_mode',
         'base_price',
         'is_active',
+        'menu_items',
+        'menu_published_at',
     ];
 
     protected $casts = [
         'base_price' => 'decimal:2',
         'is_active' => 'bool',
+        'menu_items' => 'array',
+        'menu_published_at' => 'datetime',
     ];
 
     public function events(): HasMany

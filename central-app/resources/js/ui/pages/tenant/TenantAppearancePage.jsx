@@ -28,12 +28,39 @@ const defaultSections = [
     { id: 'cta', label: 'Call To Action', enabled: true },
 ];
 
+function normalizeSections(sections) {
+    if (!Array.isArray(sections) || sections.length === 0) {
+        return defaultSections;
+    }
+
+    return sections.map((section, index) => ({
+        id: String(section?.id || `section-${index + 1}`),
+        label: String(section?.label || `Section ${index + 1}`),
+        enabled: Boolean(section?.enabled),
+    }));
+}
+
+function mapBrandingToCustomizer(payload) {
+    return {
+        ...fallbackCustomizer,
+        company_name: payload?.company_name || '',
+        primary_color: payload?.primary_color || '#0B8F66',
+        logo_url: payload?.logo_url || '',
+        heading_font: payload?.heading_font || fallbackCustomizer.heading_font,
+        body_font: payload?.body_font || fallbackCustomizer.body_font,
+        layout_density: payload?.layout_density || fallbackCustomizer.layout_density,
+        card_radius: Number(payload?.card_radius ?? fallbackCustomizer.card_radius),
+        hero_message: payload?.hero_message || fallbackCustomizer.hero_message,
+    };
+}
+
 export function TenantAppearancePage() {
     const { refreshProfile } = useTenantContext();
     const [panel, setPanel] = useState('brand');
     const [customizer, setCustomizer] = useState(fallbackCustomizer);
     const [savedSnapshot, setSavedSnapshot] = useState(fallbackCustomizer);
     const [sections, setSections] = useState(defaultSections);
+    const [savedSections, setSavedSections] = useState(defaultSections);
     const [publishedAt, setPublishedAt] = useState('');
 
     const brandingQuery = useQuery({
@@ -45,30 +72,26 @@ export function TenantAppearancePage() {
     const saveCustomizerMutation = useMutation({
         mutationFn: updateTenantBranding,
         onSuccess: async (payload) => {
-            const next = {
-                ...customizer,
-                company_name: payload.company_name || '',
-                primary_color: payload.primary_color || '#0B8F66',
-                logo_url: payload.logo_url || '',
-            };
+            const next = mapBrandingToCustomizer(payload);
 
             setCustomizer(next);
             setSavedSnapshot(next);
+            const normalizedSections = normalizeSections(payload?.homepage_sections);
+            setSections(normalizedSections);
+            setSavedSections(normalizedSections);
             await refreshProfile();
         },
     });
 
     useEffect(() => {
         if (brandingQuery.data) {
-            const next = {
-                ...fallbackCustomizer,
-                company_name: brandingQuery.data.company_name || '',
-                primary_color: brandingQuery.data.primary_color || '#0B8F66',
-                logo_url: brandingQuery.data.logo_url || '',
-            };
+            const next = mapBrandingToCustomizer(brandingQuery.data);
 
             setCustomizer(next);
             setSavedSnapshot(next);
+            const normalizedSections = normalizeSections(brandingQuery.data?.homepage_sections);
+            setSections(normalizedSections);
+            setSavedSections(normalizedSections);
         }
     }, [brandingQuery.data]);
 
@@ -131,6 +154,12 @@ export function TenantAppearancePage() {
             primary_color: customizer.primary_color,
             logo_url: customizer.logo_url,
             logo_path: '',
+            heading_font: customizer.heading_font,
+            body_font: customizer.body_font,
+            layout_density: customizer.layout_density,
+            card_radius: customizer.card_radius,
+            hero_message: customizer.hero_message,
+            homepage_sections: sections,
         });
     }
 
@@ -141,6 +170,12 @@ export function TenantAppearancePage() {
                 primary_color: customizer.primary_color,
                 logo_url: customizer.logo_url,
                 logo_path: '',
+                heading_font: customizer.heading_font,
+                body_font: customizer.body_font,
+                layout_density: customizer.layout_density,
+                card_radius: customizer.card_radius,
+                hero_message: customizer.hero_message,
+                homepage_sections: sections,
             },
             {
                 onSuccess: () => {
@@ -152,6 +187,7 @@ export function TenantAppearancePage() {
 
     function resetToSaved() {
         setCustomizer(savedSnapshot);
+        setSections(savedSections);
     }
 
     return (

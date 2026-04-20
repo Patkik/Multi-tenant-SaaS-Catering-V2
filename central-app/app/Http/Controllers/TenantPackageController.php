@@ -30,15 +30,7 @@ class TenantPackageController extends Controller
             'data' => $query
                 ->latest('id')
                 ->paginate(15)
-                ->through(fn (CateringPackage $package) => [
-                    'id' => $package->id,
-                    'name' => $package->name,
-                    'description' => $package->description,
-                    'pricing_mode' => $package->pricing_mode,
-                    'base_price' => $package->base_price,
-                    'is_active' => (bool) $package->is_active,
-                    'events_count' => $package->events_count,
-                ]),
+                ->through(fn (CateringPackage $package) => $this->serializePackage($package, true)),
         ]);
     }
 
@@ -47,14 +39,7 @@ class TenantPackageController extends Controller
         $package = CateringPackage::query()->create($request->validated());
 
         return response()->json([
-            'data' => [
-                'id' => $package->id,
-                'name' => $package->name,
-                'description' => $package->description,
-                'pricing_mode' => $package->pricing_mode,
-                'base_price' => $package->base_price,
-                'is_active' => (bool) $package->is_active,
-            ],
+            'data' => $this->serializePackage($package),
         ], 201);
     }
 
@@ -64,14 +49,7 @@ class TenantPackageController extends Controller
         $package->save();
 
         return response()->json([
-            'data' => [
-                'id' => $package->id,
-                'name' => $package->name,
-                'description' => $package->description,
-                'pricing_mode' => $package->pricing_mode,
-                'base_price' => $package->base_price,
-                'is_active' => (bool) $package->is_active,
-            ],
+            'data' => $this->serializePackage($package),
         ]);
     }
 
@@ -90,5 +68,25 @@ class TenantPackageController extends Controller
                 'message' => 'Package deleted successfully.',
             ],
         ]);
+    }
+
+    private function serializePackage(CateringPackage $package, bool $includeCounts = false): array
+    {
+        $payload = [
+            'id' => $package->id,
+            'name' => $package->name,
+            'description' => $package->description,
+            'pricing_mode' => $package->pricing_mode,
+            'base_price' => $package->base_price,
+            'is_active' => (bool) $package->is_active,
+            'menu_items' => is_array($package->menu_items) ? array_values($package->menu_items) : [],
+            'menu_published_at' => $package->menu_published_at?->toIso8601String(),
+        ];
+
+        if ($includeCounts) {
+            $payload['events_count'] = $package->events_count;
+        }
+
+        return $payload;
     }
 }

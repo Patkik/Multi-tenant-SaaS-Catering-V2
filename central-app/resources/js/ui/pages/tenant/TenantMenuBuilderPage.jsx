@@ -1,24 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchTenantPackages } from '../../../api/tenantApi';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchTenantPackages, updateTenantPackage } from '../../../api/tenantApi';
 import { formatCurrency, formatNumber } from '../../../lib/formatters';
 
-const menuLibrary = [
-    { id: 'beef-salpicado', name: 'Beef Salpicado', category: 'Main Course', unitCost: 95 },
-    { id: 'chicken-galantina', name: 'Chicken Galantina', category: 'Main Course', unitCost: 88 },
-    { id: 'seafood-paella', name: 'Seafood Paella', category: 'Signature Rice', unitCost: 110 },
-    { id: 'caesar-salad', name: 'Classic Caesar Salad', category: 'Appetizer', unitCost: 45 },
-    { id: 'mango-panna-cotta', name: 'Mango Panna Cotta', category: 'Dessert', unitCost: 42 },
-    { id: 'brew-coffee-bar', name: 'Premium Brew Coffee Bar', category: 'Beverage', unitCost: 36 },
-];
+const menuCategories = ['Appetizer', 'Main Course', 'Signature Rice', 'Dessert', 'Beverage', 'Add-On'];
+
+const defaultMenuItemDraft = {
+    name: '',
+    category: 'Main Course',
+    servings: 100,
+    unit_cost: '',
+    notes: '',
+};
+
+function normalizeMenuItem(item) {
+    return {
+        name: String(item?.name ?? '').trim(),
+        category: String(item?.category ?? 'Main Course').trim() || 'Main Course',
+        servings: Math.max(Number(item?.servings ?? 1), 1),
+        unit_cost: Math.max(Number(item?.unit_cost ?? 0), 0),
+        notes: String(item?.notes ?? '').trim(),
+    };
+}
 
 export function TenantMenuBuilderPage() {
+    const queryClient = useQueryClient();
     const [selectedPackageId, setSelectedPackageId] = useState(null);
-    const [selectedItemId, setSelectedItemId] = useState(menuLibrary[0].id);
-    const [servings, setServings] = useState(100);
-    const [notes, setNotes] = useState('');
-    const [compositions, setCompositions] = useState({});
-    const [publishState, setPublishState] = useState({});
+    const [menuItemDraft, setMenuItemDraft] = useState(defaultMenuItemDraft);
+    const [packageItems, setPackageItems] = useState([]);
+    const [statusMessage, setStatusMessage] = useState('');
 
     const packagesQuery = useQuery({
         queryKey: ['tenant-packages'],
@@ -35,11 +45,46 @@ export function TenantMenuBuilderPage() {
     }, [packages, selectedPackageId]);
 
     const selectedPackage = packages.find((pkg) => pkg.id === selectedPackageId) ?? null;
-    const packageItems = selectedPackage ? compositions[selectedPackage.id] ?? [] : [];
 
-    const ingredientCost = packageItems.reduce((carry, item) => carry + item.totalCost, 0);
+    useEffect(() => {
+        if (!selectedPackage) {
+            setPackageItems([]);
+            return;
+        }
+
+        const nextItems = Array.isArray(selectedPackage.menu_items) ? selectedPackage.menu_items.map(normalizeMenuItem) : [];
+        setPackageItems(nextItems);
+        setStatusMessage('');
+    }, [selectedPackage?.id, selectedPackage?.menu_items]);
+
+    const saveMenuMutation = useMutation({
+        mutationFn: ({ packageId, payload }) => updateTenantPackage(packageId, payload),
+        onSuccess: async (_response, variables) => {
+            await queryClient.invalidateQueries({ queryKey: ['tenant-packages'] });
+
+            setStatusMessage(
+                variables.mode === 'publish'
+                    ? `Menu template published at ${new Date().toLocaleString()}.`
+                    : 'Menu template saved to package data.',
+            );
+        },
+        onError: (error) => {
+            setStatusMessage(error?.response?.data?.message ?? 'Unable to save menu template right now.');
+        },
+    });
+
+    const ingredientCost = packageItems.reduce((carry, item) => carry + Number(item.unit_cost || 0) * Number(item.servings || 0), 0);
     const basePrice = Number(selectedPackage?.base_price ?? 0);
     const suggestedPrice = Math.max(basePrice, Math.round(ingredientCost * 1.5));
+
+    const publishedAtLabel = selectedPackage?.menu_published_at ? new Date(selectedPackage.menu_published_at).toLocaleString() : null;
+
+    function updateDraftField(key, value) {
+        setMenuItemDraft((previous) => ({
+            ...previous,
+            [key]: value,
+        }));
+    }
 
     function addItemToMenu(event) {
         event.preventDefault();
@@ -48,51 +93,62 @@ export function TenantMenuBuilderPage() {
             return;
         }
 
-        const template = menuLibrary.find((item) => item.id === selectedItemId);
+        const trimmedName = menuItemDraft.name.trim();
 
-        if (!template) {
+        if (!trimmedName) {
+            setStatusMessage('Menu item name is required.');
             return;
         }
 
-        const safeServings = Math.max(Number(servings || 0), 1);
-        const entry = {
-            id: `${template.id}-${Date.now()}`,
-            name: template.name,
-            category: template.category,
-            unitCost: template.unitCost,
-            servings: safeServings,
-            totalCost: template.unitCost * safeServings,
-            notes: notes.trim(),
-        };
 
-        setCompositions((previous) => ({
+        setPackageItems((previous) => [
             ...previous,
-            [selectedPackage.id]: [...(previous[selectedPackage.id] ?? []), entry],
-        }));
+            normalizeMenuItem({
+                ...menuItemDraft,
+                name: trimmedName,
+            }),
+        ]);
 
-        setNotes('');
+        setMenuItemDraft((previous) => ({
+            ...defaultMenuItemDraft,
+            category: previous.category,
+            servings: previous.servings,
+        }));
+        setStatusMessage('');
     }
 
-    function removeMenuItem(itemId) {
+    function removeMenuItem(index) {
+        setPackageItems((previous) => previous.filter((_, itemIndex) => itemIndex !== index));
+        setStatusMessage('');
+    }
+
+    function persistMenuTemplate(mode) {
         if (!selectedPackage) {
             return;
         }
 
-        setCompositions((previous) => ({
-            ...previous,
-            [selectedPackage.id]: (previous[selectedPackage.id] ?? []).filter((item) => item.id !== itemId),
-        }));
+        const normalizedItems = packageItems.map(normalizeMenuItem);
+        const payload = {
+            menu_items: normalizedItems,
+        };
+
+        if (mode === 'publish') {
+            payload.menu_published_at = new Date().toISOString();
+        }
+
+        saveMenuMutation.mutate({
+            packageId: selectedPackage.id,
+            payload,
+            mode,
+        });
+    }
+
+    function saveDraft() {
+        persistMenuTemplate('draft');
     }
 
     function publishTemplate() {
-        if (!selectedPackage) {
-            return;
-        }
-
-        setPublishState((previous) => ({
-            ...previous,
-            [selectedPackage.id]: new Date().toLocaleString(),
-        }));
+        persistMenuTemplate('publish');
     }
 
     return (
@@ -156,14 +212,24 @@ export function TenantMenuBuilderPage() {
                         <form onSubmit={addItemToMenu} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 Menu Item
+                                <input
+                                    value={menuItemDraft.name}
+                                    onChange={(event) => updateDraftField('name', event.target.value)}
+                                    placeholder="Example: Herb Roast Chicken"
+                                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                                />
+                            </label>
+
+                            <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Category
                                 <select
-                                    value={selectedItemId}
-                                    onChange={(event) => setSelectedItemId(event.target.value)}
+                                    value={menuItemDraft.category}
+                                    onChange={(event) => updateDraftField('category', event.target.value)}
                                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
                                 >
-                                    {menuLibrary.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                            {item.name} ({item.category})
+                                    {menuCategories.map((category) => (
+                                        <option key={category} value={category}>
+                                            {category}
                                         </option>
                                     ))}
                                 </select>
@@ -174,8 +240,21 @@ export function TenantMenuBuilderPage() {
                                 <input
                                     type="number"
                                     min={1}
-                                    value={servings}
-                                    onChange={(event) => setServings(event.target.value)}
+                                    value={menuItemDraft.servings}
+                                    onChange={(event) => updateDraftField('servings', event.target.value)}
+                                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                                />
+                            </label>
+
+                            <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Unit Cost
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={menuItemDraft.unit_cost}
+                                    onChange={(event) => updateDraftField('unit_cost', event.target.value)}
+                                    placeholder="0.00"
                                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
                                 />
                             </label>
@@ -183,8 +262,8 @@ export function TenantMenuBuilderPage() {
                             <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 Notes
                                 <input
-                                    value={notes}
-                                    onChange={(event) => setNotes(event.target.value)}
+                                    value={menuItemDraft.notes}
+                                    onChange={(event) => updateDraftField('notes', event.target.value)}
                                     placeholder="Preparation notes or dietary tags"
                                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
                                 />
@@ -206,8 +285,8 @@ export function TenantMenuBuilderPage() {
                                     No items added yet.
                                 </div>
                             ) : (
-                                packageItems.map((item) => (
-                                    <div key={item.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                packageItems.map((item, index) => (
+                                    <div key={`${item.name}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
                                         <div className="flex items-start justify-between gap-2">
                                             <div>
                                                 <p className="text-sm font-semibold text-slate-900">{item.name}</p>
@@ -218,13 +297,15 @@ export function TenantMenuBuilderPage() {
                                             </div>
                                             <button
                                                 type="button"
-                                                onClick={() => removeMenuItem(item.id)}
+                                                onClick={() => removeMenuItem(index)}
                                                 className="rounded-lg border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-700"
                                             >
                                                 Remove
                                             </button>
                                         </div>
-                                        <p className="mt-2 text-xs font-semibold text-slate-700">Cost: {formatCurrency(item.totalCost)}</p>
+                                        <p className="mt-2 text-xs font-semibold text-slate-700">
+                                            Cost: {formatCurrency(Number(item.unit_cost || 0) * Number(item.servings || 0))}
+                                        </p>
                                     </div>
                                 ))
                             )}
@@ -256,16 +337,33 @@ export function TenantMenuBuilderPage() {
 
                         <button
                             type="button"
-                            onClick={publishTemplate}
-                            disabled={!selectedPackage}
-                            className="w-full rounded-xl bg-[var(--primary-color)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={saveDraft}
+                            disabled={!selectedPackage || saveMenuMutation.isPending}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            Publish Menu Template
+                            {saveMenuMutation.isPending ? 'Saving...' : 'Save Draft'}
                         </button>
 
-                        {selectedPackage && publishState[selectedPackage.id] ? (
-                            <p className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                                Published at {publishState[selectedPackage.id]}.
+                        <button
+                            type="button"
+                            onClick={publishTemplate}
+                            disabled={!selectedPackage || saveMenuMutation.isPending}
+                            className="w-full rounded-xl bg-[var(--primary-color)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {saveMenuMutation.isPending ? 'Publishing...' : 'Publish Menu Template'}
+                        </button>
+
+                        {publishedAtLabel ? <p className="text-xs text-slate-600">Last published: {publishedAtLabel}</p> : null}
+
+                        {statusMessage ? (
+                            <p
+                                className={`rounded-xl border px-3 py-2 text-xs ${
+                                    saveMenuMutation.isError
+                                        ? 'border-rose-300 bg-rose-50 text-rose-900'
+                                        : 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                                }`}
+                            >
+                                {statusMessage}
                             </p>
                         ) : null}
                     </div>

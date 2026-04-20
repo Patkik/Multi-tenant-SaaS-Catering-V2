@@ -10,6 +10,7 @@ use App\Http\Controllers\TenantStaffController;
 use App\Http\Controllers\TenantAssignmentController;
 use App\Http\Controllers\TenantAnalyticsController;
 use App\Http\Controllers\TenantBrandingController;
+use App\Http\Controllers\TenantSettingsController;
 use App\Http\Controllers\TenantUserController;
 use App\Http\Controllers\TenantAuthController;
 use App\Http\Controllers\TenantEventController;
@@ -105,6 +106,8 @@ Route::middleware([
             });
 
             Route::middleware(['permission:settings.manage'])->group(function () {
+                Route::get('/settings', [TenantSettingsController::class, 'show']);
+                Route::patch('/settings', [TenantSettingsController::class, 'update']);
                 Route::get('/users', [TenantUserController::class, 'index']);
                 Route::post('/users', [TenantUserController::class, 'store']);
                 Route::patch('/users/{member}', [TenantUserController::class, 'update']);

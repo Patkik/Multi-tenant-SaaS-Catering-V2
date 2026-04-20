@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchTenantAnalytics } from '../../../api/tenantApi';
-import { formatCurrency, formatNumber } from '../../../lib/formatters';
+import { formatNumber } from '../../../lib/formatters';
 import { StatCard } from '../../components/StatCard';
 
 export function TenantAnalyticsPage() {
@@ -38,8 +38,8 @@ export function TenantAnalyticsPage() {
 
             <section className="grid gap-4 md:grid-cols-3">
                 <StatCard title="Total Events" value={kpis.total_events ?? 0} trend="All recorded tenant events" />
-                <StatCard title="Total Revenue" value={formatCurrency(kpis.total_revenue ?? 0)} trend="Settled payments only" />
-                <StatCard title="Pending Collections" value={formatCurrency(kpis.pending_collections ?? 0)} trend="Open receivables" />
+                <StatCard title="Total Revenue" value={kpis.total_revenue ?? 0} kind="currency" trend="Settled payments only" />
+                <StatCard title="Pending Collections" value={kpis.pending_collections ?? 0} kind="currency" trend="Open receivables" />
             </section>
 
             <section className="grid gap-4 xl:grid-cols-[1.7fr_1.3fr]">

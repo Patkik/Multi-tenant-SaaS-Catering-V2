@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchTenantUsers } from '../../../api/tenantApi';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchTenantSettings, fetchTenantUsers, updateTenantSettings } from '../../../api/tenantApi';
 import { useTenantContext } from '../../../providers/TenantProvider';
 import { formatNumber } from '../../../lib/formatters';
 
-const initialPreferences = {
+const defaultPreferences = {
     timezone: 'Asia/Manila',
     date_format: 'MMMM DD, YYYY',
     default_guest_capacity: 120,
@@ -15,15 +15,47 @@ const initialPreferences = {
 };
 
 export function TenantSettingsPage() {
+    const queryClient = useQueryClient();
     const { tenantProfile, authUser } = useTenantContext();
-    const [preferences, setPreferences] = useState(initialPreferences);
+    const [preferences, setPreferences] = useState(defaultPreferences);
     const [savedAt, setSavedAt] = useState('');
+
+    const settingsQuery = useQuery({
+        queryKey: ['tenant-settings'],
+        queryFn: fetchTenantSettings,
+        staleTime: 1000 * 60,
+    });
 
     const usersQuery = useQuery({
         queryKey: ['tenant-users'],
         queryFn: () => fetchTenantUsers(),
         staleTime: 1000 * 30,
     });
+
+    const saveSettingsMutation = useMutation({
+        mutationFn: updateTenantSettings,
+        onSuccess: async (payload) => {
+            const next = {
+                ...defaultPreferences,
+                ...payload,
+            };
+
+            setPreferences(next);
+            setSavedAt(payload?.updated_at ? new Date(payload.updated_at).toLocaleString() : new Date().toLocaleString());
+            await queryClient.invalidateQueries({ queryKey: ['tenant-settings'] });
+        },
+    });
+
+    useEffect(() => {
+        if (!settingsQuery.data) {
+            return;
+        }
+
+        setPreferences({
+            ...defaultPreferences,
+            ...settingsQuery.data,
+        });
+    }, [settingsQuery.data]);
 
     const users = useMemo(() => usersQuery.data?.data?.data ?? [], [usersQuery.data]);
 
@@ -44,7 +76,7 @@ export function TenantSettingsPage() {
 
     function saveSettings(event) {
         event.preventDefault();
-        setSavedAt(new Date().toLocaleString());
+        saveSettingsMutation.mutate(preferences);
     }
 
     return (
@@ -61,6 +93,16 @@ export function TenantSettingsPage() {
                     </header>
 
                     <div className="grid gap-4 p-4 md:grid-cols-2">
+                        {settingsQuery.isPending ? (
+                            <p className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading saved settings...</p>
+                        ) : null}
+
+                        {settingsQuery.isError ? (
+                            <p className="md:col-span-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                                Unable to load tenant settings. Editing defaults until the service recovers.
+                            </p>
+                        ) : null}
+
                         <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Timezone
                             <select
@@ -143,10 +185,20 @@ export function TenantSettingsPage() {
 
                     <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
                         {savedAt ? <p className="text-xs text-emerald-700">Saved at {savedAt}</p> : <span />}
-                        <button type="submit" className="rounded-full bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-white">
-                            Save Settings
+                        <button
+                            type="submit"
+                            disabled={saveSettingsMutation.isPending}
+                            className="rounded-full bg-[var(--primary-color)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                            {saveSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}
                         </button>
                     </div>
+
+                    {saveSettingsMutation.isError ? (
+                        <p className="mx-4 mb-4 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                            {saveSettingsMutation.error?.response?.data?.message ?? 'Unable to save workspace settings.'}
+                        </p>
+                    ) : null}
                 </form>
 
                 <div className="space-y-4">
