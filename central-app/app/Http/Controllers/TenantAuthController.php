@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\UpdateTenantProfileRequest;
 use App\Http\Requests\TenantLoginRequest;
 use App\Http\Requests\TenantRegisterRequest;
 use App\Models\User;
 use App\Support\TenantRoles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class TenantAuthController extends Controller
 {
@@ -128,6 +130,81 @@ class TenantAuthController extends Controller
         ]);
     }
 
+    public function updateProfile(UpdateTenantProfileRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
+
+        $validated = $request->validated();
+
+        $nextFirstName = array_key_exists('firstname', $validated)
+            ? trim((string) ($validated['firstname'] ?? ''))
+            : (string) ($user->firstname ?? '');
+        $nextLastName = array_key_exists('lastname', $validated)
+            ? trim((string) ($validated['lastname'] ?? ''))
+            : (string) ($user->lastname ?? '');
+        $nextMiddleInitial = array_key_exists('mi', $validated)
+            ? trim((string) ($validated['mi'] ?? ''))
+            : (string) ($user->mi ?? '');
+        $nextEmail = array_key_exists('email', $validated)
+            ? trim((string) ($validated['email'] ?? ''))
+            : (string) ($user->email ?? '');
+
+        $user->firstname = $nextFirstName !== '' ? $nextFirstName : null;
+        $user->lastname = $nextLastName !== '' ? $nextLastName : null;
+        $user->mi = $nextMiddleInitial !== '' ? $nextMiddleInitial : null;
+        $user->email = $nextEmail !== '' ? $nextEmail : null;
+        $user->name = trim((string) (($user->firstname ?? '').' '.($user->lastname ?? '')));
+
+        if ($user->name === '') {
+            $user->name = $user->username;
+        }
+
+        if (! empty($validated['password'])) {
+            $user->password = Hash::make((string) $validated['password']);
+        }
+
+        $existingAvatarPath = (string) ($user->getAttribute('avatar_path') ?? '');
+        $shouldRemoveAvatar = (bool) ($validated['remove_avatar'] ?? false);
+
+        if ($shouldRemoveAvatar && $existingAvatarPath !== '') {
+            Storage::disk('public')->delete($existingAvatarPath);
+            $user->setAttribute('avatar_path', null);
+            $user->setAttribute('avatar_url', null);
+            $existingAvatarPath = '';
+        }
+
+        if ($request->hasFile('avatar_file')) {
+            $avatarFile = $request->file('avatar_file');
+
+            if ($avatarFile !== null) {
+                if ($existingAvatarPath !== '') {
+                    Storage::disk('public')->delete($existingAvatarPath);
+                }
+
+                $tenant = tenant();
+                $tenantKey = $tenant ? (string) $tenant->getTenantKey() : 'shared';
+                $uploadedAvatarPath = $avatarFile->store("tenant-users/{$tenantKey}/avatars", 'public');
+
+                $user->setAttribute('avatar_path', $uploadedAvatarPath);
+                $user->setAttribute('avatar_url', Storage::disk('public')->url($uploadedAvatarPath));
+            }
+        }
+
+        $user->save();
+
+        return response()->json([
+            'data' => [
+                'user' => $this->serializeUser($user),
+            ],
+        ]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -154,6 +231,7 @@ class TenantAuthController extends Controller
             'lastname' => $user->lastname,
             'display_name' => trim((string) (($user->firstname ?? '').' '.($user->lastname ?? ''))) ?: ($user->name ?? $user->username),
             'email' => $user->email,
+            'avatar_url' => $user->avatar_url,
             'is_active' => (bool) $user->is_active,
             'role' => $role,
             'roles' => $user->getRoleNames()->values()->all(),

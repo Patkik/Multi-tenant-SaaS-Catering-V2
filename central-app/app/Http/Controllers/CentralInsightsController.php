@@ -71,6 +71,13 @@ class CentralInsightsController extends Controller
         ]);
     }
 
+    public function syncAppVersion(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->appUpdateService->syncCurrentVersion(),
+        ]);
+    }
+
     public function auditLogs(Request $request): JsonResponse
     {
         return response()->json([

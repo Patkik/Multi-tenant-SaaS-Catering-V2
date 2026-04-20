@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { applyCentralAppUpdate, fetchCentralAppUpdates } from '../../api/centralApi';
+import { applyCentralAppUpdate, fetchCentralAppUpdates, syncCentralAppVersion } from '../../api/centralApi';
 import { useTenantContext } from '../../providers/TenantProvider';
 
 const links = [
@@ -55,6 +55,29 @@ export function CentralWorkspaceLayout() {
             });
         },
     });
+    const syncVersionMutation = useMutation({
+        mutationFn: syncCentralAppVersion,
+        onSuccess: async (result) => {
+            const status = String(result?.status ?? 'info');
+            const message = String(result?.message ?? 'Version sync completed.');
+
+            setUpdateFeedback({
+                status,
+                message,
+            });
+
+            setHasCheckedUpdates(true);
+            await appUpdatesQuery.refetch();
+        },
+        onError: (error) => {
+            const message = String(error?.response?.data?.message || 'Failed to sync current version.');
+
+            setUpdateFeedback({
+                status: 'failed',
+                message,
+            });
+        },
+    });
 
     const pageTitle = useMemo(() => {
         const activeRoute = links.find((entry) => entry.to === location.pathname);
@@ -86,6 +109,7 @@ export function CentralWorkspaceLayout() {
     const canApplyAutomatically = Boolean(updateInfo?.can_apply);
     const isCheckingUpdates = appUpdatesQuery.fetchStatus === 'fetching';
     const isApplyingUpdate = applyUpdateMutation.isPending;
+    const isSyncingVersion = syncVersionMutation.isPending;
 
     const updateFeedbackStyle = useMemo(() => {
         if (!updateFeedback) {
@@ -118,6 +142,11 @@ export function CentralWorkspaceLayout() {
     const handleApplyUpdate = () => {
         setUpdateFeedback(null);
         applyUpdateMutation.mutate();
+    };
+
+    const handleSyncVersion = () => {
+        setUpdateFeedback(null);
+        syncVersionMutation.mutate();
     };
 
     const handleCheckForUpdates = async () => {
@@ -251,7 +280,7 @@ export function CentralWorkspaceLayout() {
                         <button
                             type="button"
                             onClick={handleCheckForUpdates}
-                            disabled={isCheckingUpdates || isApplyingUpdate}
+                            disabled={isCheckingUpdates || isApplyingUpdate || isSyncingVersion}
                             className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
                             style={{
                                 borderColor: '#378ADD',
@@ -261,6 +290,20 @@ export function CentralWorkspaceLayout() {
                             title="Check whether a newer release is available"
                         >
                             {isCheckingUpdates ? 'Checking...' : 'Check for Update'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSyncVersion}
+                            disabled={isApplyingUpdate || isCheckingUpdates || isSyncingVersion}
+                            className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                            style={{
+                                borderColor: '#1D9E75',
+                                backgroundColor: '#E1F5EE',
+                                color: '#085041',
+                            }}
+                            title="Sync the stored runtime version to the currently deployed app version"
+                        >
+                            {isSyncingVersion ? 'Syncing...' : 'Sync Version'}
                         </button>
                         {hasAvailableUpdate ? (
                             <span

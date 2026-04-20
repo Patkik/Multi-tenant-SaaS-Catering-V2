@@ -42,6 +42,8 @@ Route::prefix('/central')->middleware('auth:sanctum')->group(function () {
         ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
     Route::post('/app-updates/apply', [CentralInsightsController::class, 'applyAppUpdate'])
         ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+    Route::post('/app-updates/sync-version', [CentralInsightsController::class, 'syncAppVersion'])
+        ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
     Route::get('/audit-logs', [CentralInsightsController::class, 'auditLogs'])
         ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
     Route::get('/tenants/subdomain-availability', [CentralTenantController::class, 'checkSubdomainAvailability'])

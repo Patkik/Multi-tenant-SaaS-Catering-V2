@@ -204,6 +204,40 @@ class AppUpdateService
         ];
     }
 
+    public function syncCurrentVersion(): array
+    {
+        $resolvedVersion = $this->normalizeVersion((string) config('app.version', '0.0.0'));
+        $previousVersion = $this->currentVersion();
+
+        if ($resolvedVersion === '') {
+            return [
+                'status' => 'failed',
+                'message' => 'Unable to resolve the application version from configuration.',
+                'previous_version' => $previousVersion,
+                'current_version' => $previousVersion,
+                'synced_at' => now()->toIso8601String(),
+            ];
+        }
+
+        $this->persistCurrentVersion($resolvedVersion);
+
+        $repository = trim((string) config('services.app_updates.github_repository', ''));
+
+        if ($repository !== '') {
+            $this->forgetReleaseCache($this->cacheKeyForRepository($repository));
+        }
+
+        return [
+            'status' => 'synced',
+            'message' => $resolvedVersion === $previousVersion
+                ? sprintf('Version already synced at v%s.', $resolvedVersion)
+                : sprintf('Version synced to v%s.', $resolvedVersion),
+            'previous_version' => $previousVersion,
+            'current_version' => $resolvedVersion,
+            'synced_at' => now()->toIso8601String(),
+        ];
+    }
+
     private function fetchLatestGithubRelease(string $repository): array
     {
         $request = Http::acceptJson()

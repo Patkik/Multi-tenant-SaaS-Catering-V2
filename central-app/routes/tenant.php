@@ -43,6 +43,7 @@ Route::middleware([
 
         Route::middleware(['auth:sanctum', 'tenant.active'])->group(function () {
             Route::get('/auth/me', [TenantAuthController::class, 'me']);
+            Route::patch('/auth/profile', [TenantAuthController::class, 'updateProfile']);
             Route::post('/auth/logout', [TenantAuthController::class, 'logout']);
 
             Route::middleware(['permission:clients.view'])->group(function () {

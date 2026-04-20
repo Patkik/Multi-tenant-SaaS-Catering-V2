@@ -214,4 +214,15 @@ class CentralAppUpdatesApiTest extends TestCase
 
         Process::assertNothingRan();
     }
+
+    public function test_it_syncs_the_runtime_version_on_demand(): void
+    {
+        config()->set('app.version', '2.0.9');
+
+        $response = $this->postJson('/api/central/app-updates/sync-version');
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'synced')
+            ->assertJsonPath('data.current_version', '2.0.9');
+    }
 }
