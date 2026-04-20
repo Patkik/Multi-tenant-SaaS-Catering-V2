@@ -9,7 +9,10 @@ use App\Support\TenantRoles;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Models\Role;
@@ -263,10 +266,94 @@ class TenantUserApiTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertJsonPath('data.app_version', (string) config('app.version'))
             ->assertJsonPath('data.is_active', false)
             ->assertJsonPath('data.status', 'suspended')
             ->assertJsonPath('data.access_restriction_code', 'tenant_suspended')
             ->assertJsonPath('data.access_restriction_reason', EnsureTenantIsActive::suspensionMessage());
+    }
+
+    public function test_tenant_app_updates_endpoint_returns_release_status(): void
+    {
+        Cache::flush();
+        config()->set('app.version', '2.0.2');
+        config()->set('services.app_updates.github_repository', 'Patik/Multi-tenant-SaaS-Catering-V2');
+        config()->set('services.app_updates.apply_command', '');
+
+        Http::fake([
+            'https://api.github.com/repos/Patik/Multi-tenant-SaaS-Catering-V2/releases/latest' => Http::response([
+                'tag_name' => 'v2.1.0',
+                'name' => 'Version 2.1.0',
+                'html_url' => 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0',
+                'published_at' => now()->subMinute()->toIso8601String(),
+            ], 200),
+        ]);
+
+        $response = $this->getJson('/api/tenant/app-updates');
+
+        $response->assertOk()
+            ->assertJsonPath('data.current_version', '2.0.2')
+            ->assertJsonPath('data.latest_version', '2.1.0')
+            ->assertJsonPath('data.update_available', true)
+            ->assertJsonPath('data.can_apply', false);
+    }
+
+    public function test_tenant_app_updates_apply_returns_manual_required_without_command(): void
+    {
+        Cache::flush();
+        config()->set('app.version', '2.0.2');
+        config()->set('services.app_updates.github_repository', 'Patik/Multi-tenant-SaaS-Catering-V2');
+        config()->set('services.app_updates.apply_command', '');
+
+        Http::fake([
+            'https://api.github.com/repos/Patik/Multi-tenant-SaaS-Catering-V2/releases/latest' => Http::response([
+                'tag_name' => 'v2.1.0',
+                'name' => 'Version 2.1.0',
+                'html_url' => 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0',
+                'published_at' => now()->subMinute()->toIso8601String(),
+            ], 200),
+        ]);
+
+        Process::fake();
+
+        $response = $this->postJson('/api/tenant/app-updates/apply');
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'manual_required')
+            ->assertJsonPath('data.release.update_available', true)
+            ->assertJsonPath('data.release.can_apply', false);
+
+        Process::assertNothingRan();
+    }
+
+    public function test_tenant_app_updates_apply_runs_configured_command(): void
+    {
+        Cache::flush();
+        config()->set('app.version', '2.0.2');
+        config()->set('services.app_updates.github_repository', 'Patik/Multi-tenant-SaaS-Catering-V2');
+        config()->set('services.app_updates.apply_command', 'php artisan about');
+
+        Http::fake([
+            'https://api.github.com/repos/Patik/Multi-tenant-SaaS-Catering-V2/releases/latest' => Http::response([
+                'tag_name' => 'v2.1.0',
+                'name' => 'Version 2.1.0',
+                'html_url' => 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0',
+                'published_at' => now()->subMinute()->toIso8601String(),
+            ], 200),
+        ]);
+
+        Process::fake([
+            'php artisan about' => Process::result('Tenant update completed'),
+        ]);
+
+        $response = $this->postJson('/api/tenant/app-updates/apply');
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'applied')
+            ->assertJsonPath('data.release.can_apply', true)
+            ->assertJsonPath('data.output', 'Tenant update completed');
+
+        Process::assertRan('php artisan about');
     }
 
     private function ensureTenantTables(): void

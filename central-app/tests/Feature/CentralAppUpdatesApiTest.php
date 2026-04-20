@@ -7,6 +7,7 @@ use App\Support\CentralPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
@@ -39,6 +40,8 @@ class CentralAppUpdatesApiTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.enabled', false)
             ->assertJsonPath('data.update_available', false)
+            ->assertJsonPath('data.apply_mode', 'manual')
+            ->assertJsonPath('data.can_apply', false)
             ->assertJsonPath('data.current_version', (string) config('app.version'));
     }
 
@@ -67,6 +70,8 @@ class CentralAppUpdatesApiTest extends TestCase
             ->assertJsonPath('data.latest_version', '2.1.0')
             ->assertJsonPath('data.comparison_mode', 'semver')
             ->assertJsonPath('data.update_available', true)
+            ->assertJsonPath('data.apply_mode', 'manual')
+            ->assertJsonPath('data.can_apply', false)
             ->assertJsonPath('data.release_url', 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0');
 
         $responseTwo->assertOk()
@@ -93,5 +98,91 @@ class CentralAppUpdatesApiTest extends TestCase
             'GitHub API is unreachable right now.',
             (string) $response->json('data.error')
         );
+    }
+
+    public function test_it_returns_manual_required_when_update_is_available_but_auto_command_is_missing(): void
+    {
+        config()->set('app.version', '2.0.2');
+        config()->set('services.app_updates.github_repository', 'Patik/Multi-tenant-SaaS-Catering-V2');
+        config()->set('services.app_updates.apply_command', '');
+
+        Http::fake([
+            'https://api.github.com/repos/Patik/Multi-tenant-SaaS-Catering-V2/releases/latest' => Http::response([
+                'tag_name' => 'v2.1.0',
+                'name' => 'Version 2.1.0',
+                'html_url' => 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0',
+                'published_at' => now()->subMinute()->toIso8601String(),
+            ], 200),
+        ]);
+
+        Process::fake();
+
+        $response = $this->postJson('/api/central/app-updates/apply');
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'manual_required')
+            ->assertJsonPath('data.release.update_available', true)
+            ->assertJsonPath('data.release.can_apply', false)
+            ->assertJsonPath('data.release_url', 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0');
+
+        Process::assertNothingRan();
+    }
+
+    public function test_it_executes_configured_update_command_when_update_is_available(): void
+    {
+        config()->set('app.version', '2.0.2');
+        config()->set('services.app_updates.github_repository', 'Patik/Multi-tenant-SaaS-Catering-V2');
+        config()->set('services.app_updates.apply_command', 'php artisan about');
+        config()->set('services.app_updates.apply_timeout', 600);
+
+        Http::fake([
+            'https://api.github.com/repos/Patik/Multi-tenant-SaaS-Catering-V2/releases/latest' => Http::response([
+                'tag_name' => 'v2.1.0',
+                'name' => 'Version 2.1.0',
+                'html_url' => 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0',
+                'published_at' => now()->subMinute()->toIso8601String(),
+            ], 200),
+        ]);
+
+        Process::fake([
+            'php artisan about' => Process::result('Updated successfully'),
+        ]);
+
+        $response = $this->postJson('/api/central/app-updates/apply');
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'applied')
+            ->assertJsonPath('data.release.update_available', true)
+            ->assertJsonPath('data.release.can_apply', true)
+            ->assertJsonPath('data.exit_code', 0)
+            ->assertJsonPath('data.output', 'Updated successfully');
+
+        Process::assertRan('php artisan about');
+    }
+
+    public function test_it_does_not_execute_update_command_when_system_is_already_up_to_date(): void
+    {
+        config()->set('app.version', '2.1.0');
+        config()->set('services.app_updates.github_repository', 'Patik/Multi-tenant-SaaS-Catering-V2');
+        config()->set('services.app_updates.apply_command', 'php artisan about');
+
+        Http::fake([
+            'https://api.github.com/repos/Patik/Multi-tenant-SaaS-Catering-V2/releases/latest' => Http::response([
+                'tag_name' => 'v2.1.0',
+                'name' => 'Version 2.1.0',
+                'html_url' => 'https://github.com/Patik/Multi-tenant-SaaS-Catering-V2/releases/tag/v2.1.0',
+                'published_at' => now()->subMinute()->toIso8601String(),
+            ], 200),
+        ]);
+
+        Process::fake();
+
+        $response = $this->postJson('/api/central/app-updates/apply');
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'up_to_date')
+            ->assertJsonPath('data.release.update_available', false);
+
+        Process::assertNothingRan();
     }
 }

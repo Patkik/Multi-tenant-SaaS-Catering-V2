@@ -77,6 +77,12 @@ export async function fetchCentralAppUpdates() {
     return response.data.data;
 }
 
+export async function applyCentralAppUpdate() {
+    const response = await http.post('/api/central/app-updates/apply');
+
+    return response.data.data;
+}
+
 export async function fetchCentralAuditLogs({ search = '', type = '', actor = '' } = {}) {
     const response = await http.get('/api/central/audit-logs', {
         params: {

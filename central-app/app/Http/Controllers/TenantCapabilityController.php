@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Middleware\EnsureTenantIsActive;
+use App\Services\AppUpdateService;
 use App\Support\PlanFeatures;
 use App\Support\TenantRoles;
 use Illuminate\Http\Request;
@@ -11,6 +12,11 @@ use Illuminate\Http\JsonResponse;
 
 class TenantCapabilityController extends Controller
 {
+    public function __construct(
+        private readonly AppUpdateService $appUpdateService,
+    ) {
+    }
+
     public function __invoke(Request $request): JsonResponse
     {
         $tenant = tenant();
@@ -51,6 +57,7 @@ class TenantCapabilityController extends Controller
                 'company_name' => $tenant->getAttribute('company_name'),
                 'subdomain' => $subdomain,
                 'full_domain' => $subdomain ? sprintf('%s.%s', $subdomain, $baseDomain) : null,
+                'app_version' => (string) config('app.version', '0.0.0'),
                 'plan' => $plan,
                 'plan_details' => PlanFeatures::detailsForPlan($plan),
                 'enabled_features' => $enabledFeatures,
@@ -69,6 +76,20 @@ class TenantCapabilityController extends Controller
                 'access_restriction_reason' => $isActive ? null : EnsureTenantIsActive::suspensionMessage(),
                 'access_restriction_code' => $isActive ? null : 'tenant_suspended',
             ],
+        ]);
+    }
+
+    public function appUpdates(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->appUpdateService->latestRelease(),
+        ]);
+    }
+
+    public function applyAppUpdate(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->appUpdateService->applyLatestRelease(),
         ]);
     }
 }

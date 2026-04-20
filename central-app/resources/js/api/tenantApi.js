@@ -190,6 +190,18 @@ export async function fetchTenantAnalytics() {
     return response.data.data;
 }
 
+export async function fetchTenantAppUpdates() {
+    const response = await http.get('/api/tenant/app-updates');
+
+    return response.data.data;
+}
+
+export async function applyTenantAppUpdate() {
+    const response = await http.post('/api/tenant/app-updates/apply');
+
+    return response.data.data;
+}
+
 export async function fetchTenantBranding() {
     const response = await http.get('/api/tenant/branding');
 

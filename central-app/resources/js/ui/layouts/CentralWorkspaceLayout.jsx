@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { fetchCentralAppUpdates } from '../../api/centralApi';
+import { applyCentralAppUpdate, fetchCentralAppUpdates } from '../../api/centralApi';
 import { useTenantContext } from '../../providers/TenantProvider';
 
 const links = [
@@ -15,17 +15,44 @@ const links = [
     { to: '/central/audit-logs', label: 'Audit Logs' },
 ];
 
-const appVersion = import.meta.env.VITE_APP_VERSION || '0.0.0';
+const buildTimeVersion = import.meta.env.VITE_APP_VERSION || '0.0.0';
 
 export function CentralWorkspaceLayout() {
     const location = useLocation();
     const { centralAuthUser, centralSignOut } = useTenantContext();
+    const [updateFeedback, setUpdateFeedback] = useState(null);
     const appUpdatesQuery = useQuery({
         queryKey: ['central-app-updates'],
         queryFn: fetchCentralAppUpdates,
         staleTime: 1000 * 60 * 5,
         refetchInterval: 1000 * 60 * 5,
         retry: false,
+    });
+    const applyUpdateMutation = useMutation({
+        mutationFn: applyCentralAppUpdate,
+        onSuccess: (result) => {
+            const status = String(result?.status ?? 'info');
+            const message = String(result?.message ?? 'Update action completed.');
+
+            setUpdateFeedback({
+                status,
+                message,
+            });
+
+            appUpdatesQuery.refetch();
+
+            if (status === 'manual_required' && result?.release_url) {
+                window.open(result.release_url, '_blank', 'noopener,noreferrer');
+            }
+        },
+        onError: (error) => {
+            const message = String(error?.response?.data?.message || 'Failed to trigger update command.');
+
+            setUpdateFeedback({
+                status: 'failed',
+                message,
+            });
+        },
     });
 
     const pageTitle = useMemo(() => {
@@ -51,9 +78,45 @@ export function CentralWorkspaceLayout() {
             .join('') || 'CA';
     }, [adminName]);
 
-            const updateInfo = appUpdatesQuery.data;
-            const hasAvailableUpdate = Boolean(updateInfo?.enabled && updateInfo?.update_available);
-            const latestVersionLabel = updateInfo?.latest_tag || updateInfo?.latest_version;
+    const updateInfo = appUpdatesQuery.data;
+    const hasAvailableUpdate = Boolean(updateInfo?.enabled && updateInfo?.update_available);
+    const latestVersionLabel = updateInfo?.latest_tag || updateInfo?.latest_version;
+    const displayedVersion = updateInfo?.current_version || buildTimeVersion;
+    const canApplyAutomatically = Boolean(updateInfo?.can_apply);
+    const isApplyingUpdate = applyUpdateMutation.isPending;
+
+    const updateFeedbackStyle = useMemo(() => {
+        if (!updateFeedback) {
+            return null;
+        }
+
+        if (updateFeedback.status === 'applied') {
+            return {
+                borderColor: '#1D9E75',
+                backgroundColor: '#E1F5EE',
+                color: '#085041',
+            };
+        }
+
+        if (updateFeedback.status === 'failed') {
+            return {
+                borderColor: '#D85A30',
+                backgroundColor: '#FAECE7',
+                color: '#712B13',
+            };
+        }
+
+        return {
+            borderColor: '#EF9F27',
+            backgroundColor: '#FAEEDA',
+            color: '#633806',
+        };
+    }, [updateFeedback]);
+
+    const handleApplyUpdate = () => {
+        setUpdateFeedback(null);
+        applyUpdateMutation.mutate();
+    };
 
     return (
         <div
@@ -147,13 +210,10 @@ export function CentralWorkspaceLayout() {
                             className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
                             style={{ borderColor: 'var(--color-border-tertiary)' }}
                         >
-                            v{appVersion}
+                            v{displayedVersion}
                         </span>
                         {hasAvailableUpdate ? (
-                            <a
-                                href={updateInfo?.release_url || '#'}
-                                target="_blank"
-                                rel="noreferrer"
+                            <span
                                 className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
                                 style={{
                                     borderColor: '#D85A30',
@@ -163,7 +223,23 @@ export function CentralWorkspaceLayout() {
                                 title={latestVersionLabel ? `Latest release: ${latestVersionLabel}` : 'A newer release is available'}
                             >
                                 Update Available
-                            </a>
+                            </span>
+                        ) : null}
+                        {hasAvailableUpdate ? (
+                            <button
+                                type="button"
+                                onClick={handleApplyUpdate}
+                                disabled={isApplyingUpdate}
+                                className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                                style={{
+                                    borderColor: '#378ADD',
+                                    backgroundColor: '#E6F1FB',
+                                    color: '#0C447C',
+                                }}
+                                title={canApplyAutomatically ? 'Apply update command now' : 'Open release instructions for manual update'}
+                            >
+                                {isApplyingUpdate ? 'Updating...' : canApplyAutomatically ? 'Update System' : 'Open Release'}
+                            </button>
                         ) : null}
                         <span
                             className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold"
@@ -176,6 +252,18 @@ export function CentralWorkspaceLayout() {
                         </span>
                     </div>
                 </header>
+
+                {updateFeedback ? (
+                    <div
+                        className="border-b px-6 py-2 text-[11px]"
+                        style={{
+                            borderColor: 'var(--color-border-tertiary)',
+                            ...(updateFeedbackStyle ?? {}),
+                        }}
+                    >
+                        {updateFeedback.message}
+                    </div>
+                ) : null}
 
                 <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                     <h2 className="sr-only">Central platform workspace content</h2>

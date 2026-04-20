@@ -40,6 +40,8 @@ return [
         'github_token' => env('APP_UPDATE_GITHUB_TOKEN'),
         'cache_ttl' => (int) env('APP_UPDATE_CACHE_TTL', 300),
         'github_verify_tls' => filter_var(env('APP_UPDATE_GITHUB_VERIFY_TLS', true), FILTER_VALIDATE_BOOL),
+        'apply_command' => env('APP_UPDATE_APPLY_COMMAND', ''),
+        'apply_timeout' => (int) env('APP_UPDATE_APPLY_TIMEOUT', 900),
     ],
 
 ];

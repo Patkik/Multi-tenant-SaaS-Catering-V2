@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - central-app/package.json
+      - central-app/package-lock.json
+  release:
+    types:
+      - published
+      - edited
   workflow_dispatch:
 
 permissions:
@@ -17,6 +22,7 @@ concurrency:
 
 jobs:
   sync-version-tag:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
 
     steps:
@@ -30,24 +36,47 @@ jobs:
         shell: bash
         run: |
           VERSION="$(python -c \"import json, pathlib; print(json.loads(pathlib.Path('central-app/package.json').read_text(encoding='utf-8')).get('version', ''))\")"
+          LOCK_VERSION="$(python -c \"import json, pathlib; p = pathlib.Path('central-app/package-lock.json'); print(json.loads(p.read_text(encoding='utf-8')).get('version', '') if p.is_file() else '')\")"
 
           if [[ -z "$VERSION" ]]; then
             echo "central-app/package.json is missing a version field." >&2
             exit 1
           fi
 
+          if [[ -n "$LOCK_VERSION" && "$LOCK_VERSION" != "$VERSION" ]]; then
+            echo "central-app/package-lock.json version ($LOCK_VERSION) does not match central-app/package.json version ($VERSION)." >&2
+            exit 1
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create tag when missing
+      - name: Verify existing tag alignment
+        id: tag_alignment
         shell: bash
         run: |
           TAG="${{ steps.app_version.outputs.tag }}"
+          REMOTE_TAG_SHA="$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}')"
 
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists on origin."
+          if [[ -z "$REMOTE_TAG_SHA" ]]; then
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          if [[ "$REMOTE_TAG_SHA" != "$GITHUB_SHA" ]]; then
+            echo "Tag $TAG already exists on $REMOTE_TAG_SHA but current commit is $GITHUB_SHA." >&2
+            echo "Bump central-app/package.json version before merging additional release changes." >&2
+            exit 1
+          fi
+
+          echo "Tag $TAG already exists on the current commit."
+          echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag when missing
+        if: steps.tag_alignment.outputs.tag_exists != 'true'
+        shell: bash
+        run: |
+          TAG="${{ steps.app_version.outputs.tag }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -63,3 +92,34 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  validate-release-sync:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Validate release tag matches package version
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          NORMALIZED_TAG="${TAG#v}"
+          VERSION="$(python -c \"import json, pathlib; print(json.loads(pathlib.Path('central-app/package.json').read_text(encoding='utf-8')).get('version', ''))\")"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "central-app/package.json is missing a version field at release tag $TAG." >&2
+            exit 1
+          fi
+
+          if [[ "$NORMALIZED_TAG" != "$VERSION" ]]; then
+            echo "Release tag $TAG does not match central-app/package.json version $VERSION." >&2
+            exit 1
+          fi
+
+          echo "Release tag and central-app/package.json are in sync ($TAG)."

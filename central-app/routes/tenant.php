@@ -106,6 +106,14 @@ Route::middleware([
                 Route::patch('/branding', [TenantBrandingController::class, 'update']);
             });
 
+            Route::middleware(['permission:dashboard.view'])->group(function () {
+                Route::get('/app-updates', [TenantCapabilityController::class, 'appUpdates']);
+            });
+
+            Route::middleware(['permission:settings.manage'])->group(function () {
+                Route::post('/app-updates/apply', [TenantCapabilityController::class, 'applyAppUpdate']);
+            });
+
             Route::middleware(['permission:settings.manage'])->group(function () {
                 Route::get('/settings', [TenantSettingsController::class, 'show']);
                 Route::patch('/settings', [TenantSettingsController::class, 'update']);
