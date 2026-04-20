@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchTenantPackages, updateTenantPackage } from '../../../api/tenantApi';
+import { createTenantPackage, fetchTenantPackages, updateTenantPackage } from '../../../api/tenantApi';
 import { formatCurrency, formatNumber } from '../../../lib/formatters';
+import { useTenantContext } from '../../../providers/TenantProvider';
 
 const menuCategories = ['Appetizer', 'Main Course', 'Signature Rice', 'Dessert', 'Beverage', 'Add-On'];
 
@@ -11,6 +12,14 @@ const defaultMenuItemDraft = {
     servings: 100,
     unit_cost: '',
     notes: '',
+};
+
+const initialPackageDraft = {
+    name: '',
+    description: '',
+    pricing_mode: 'per_person',
+    base_price: '',
+    is_active: true,
 };
 
 function normalizeMenuItem(item) {
@@ -25,8 +34,10 @@ function normalizeMenuItem(item) {
 
 export function TenantMenuBuilderPage() {
     const queryClient = useQueryClient();
+    const { authUser } = useTenantContext();
     const [selectedPackageId, setSelectedPackageId] = useState(null);
     const [menuItemDraft, setMenuItemDraft] = useState(defaultMenuItemDraft);
+    const [packageDraft, setPackageDraft] = useState(initialPackageDraft);
     const [packageItems, setPackageItems] = useState([]);
     const [statusMessage, setStatusMessage] = useState('');
 
@@ -45,6 +56,7 @@ export function TenantMenuBuilderPage() {
     }, [packages, selectedPackageId]);
 
     const selectedPackage = packages.find((pkg) => pkg.id === selectedPackageId) ?? null;
+    const canManagePackages = Boolean(authUser?.permissions?.includes('packages.manage'));
 
     useEffect(() => {
         if (!selectedPackage) {
@@ -73,6 +85,19 @@ export function TenantMenuBuilderPage() {
         },
     });
 
+    const createPackageMutation = useMutation({
+        mutationFn: createTenantPackage,
+        onSuccess: async (createdPackage) => {
+            await queryClient.invalidateQueries({ queryKey: ['tenant-packages'] });
+            setPackageDraft(initialPackageDraft);
+            setSelectedPackageId(createdPackage?.id ?? null);
+            setStatusMessage('Package created. You can now compose its menu template.');
+        },
+        onError: (error) => {
+            setStatusMessage(error?.response?.data?.message ?? 'Unable to create package.');
+        },
+    });
+
     const ingredientCost = packageItems.reduce((carry, item) => carry + Number(item.unit_cost || 0) * Number(item.servings || 0), 0);
     const basePrice = Number(selectedPackage?.base_price ?? 0);
     const suggestedPrice = Math.max(basePrice, Math.round(ingredientCost * 1.5));
@@ -84,6 +109,42 @@ export function TenantMenuBuilderPage() {
             ...previous,
             [key]: value,
         }));
+    }
+
+    function updatePackageDraftField(key, value) {
+        setPackageDraft((previous) => ({
+            ...previous,
+            [key]: value,
+        }));
+    }
+
+    function createPackage(event) {
+        event.preventDefault();
+
+        if (!canManagePackages) {
+            setStatusMessage('You do not have permission to create packages.');
+            return;
+        }
+
+        if (!packageDraft.name.trim()) {
+            setStatusMessage('Package name is required.');
+            return;
+        }
+
+        const basePrice = Number(packageDraft.base_price);
+
+        if (!Number.isFinite(basePrice) || basePrice < 0) {
+            setStatusMessage('Base price must be zero or greater.');
+            return;
+        }
+
+        createPackageMutation.mutate({
+            name: packageDraft.name.trim(),
+            description: packageDraft.description.trim() || null,
+            pricing_mode: packageDraft.pricing_mode,
+            base_price: basePrice,
+            is_active: Boolean(packageDraft.is_active),
+        });
     }
 
     function addItemToMenu(event) {
@@ -174,7 +235,53 @@ export function TenantMenuBuilderPage() {
                         ) : null}
 
                         {!packagesQuery.isPending && !packagesQuery.isError && packages.length === 0 ? (
-                            <p className="text-sm text-slate-600">No packages found. Create one in package management first.</p>
+                            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <p className="text-sm text-slate-700">No packages found. Create your first package to start building a menu.</p>
+                                {canManagePackages ? (
+                                    <form onSubmit={createPackage} className="space-y-2">
+                                        <input
+                                            value={packageDraft.name}
+                                            onChange={(event) => updatePackageDraftField('name', event.target.value)}
+                                            placeholder="Package name"
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                                        />
+                                        <input
+                                            value={packageDraft.description}
+                                            onChange={(event) => updatePackageDraftField('description', event.target.value)}
+                                            placeholder="Description"
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                                        />
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <select
+                                                value={packageDraft.pricing_mode}
+                                                onChange={(event) => updatePackageDraftField('pricing_mode', event.target.value)}
+                                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                                            >
+                                                <option value="per_person">Per Person</option>
+                                                <option value="flat">Flat</option>
+                                            </select>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                step="0.01"
+                                                value={packageDraft.base_price}
+                                                onChange={(event) => updatePackageDraftField('base_price', event.target.value)}
+                                                placeholder="Base price"
+                                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                                            />
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            disabled={createPackageMutation.isPending}
+                                            className="w-full rounded-xl bg-[var(--primary-color)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                                        >
+                                            {createPackageMutation.isPending ? 'Creating...' : 'Create Package'}
+                                        </button>
+                                    </form>
+                                ) : (
+                                    <p className="text-xs text-slate-600">Request packages.manage access from your tenant administrator.</p>
+                                )}
+                            </div>
                         ) : null}
 
                         {packages.map((pkg) => {

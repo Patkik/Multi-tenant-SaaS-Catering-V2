@@ -49,11 +49,13 @@ class TenantRbacSeeder extends Seeder
             'clients.view',
             'clients.manage',
             'packages.view',
+            'packages.manage',
             'events.view',
             'events.manage',
             'payments.view',
             'payments.manage',
             'staff.view',
+            'staff.manage',
             'analytics.view',
         ]);
 
