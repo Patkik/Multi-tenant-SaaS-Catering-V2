@@ -9,11 +9,13 @@ use App\Support\TenantRoles;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Models\Role;
 use Stancl\Tenancy\Middleware\InitializeTenancyBySubdomain;
@@ -356,6 +358,96 @@ class TenantUserApiTest extends TestCase
         Process::assertRan('php artisan about');
     }
 
+    public function test_authenticated_user_can_update_own_profile_fields(): void
+    {
+        $user = User::query()->create([
+            'name' => 'Profile User',
+            'username' => 'profile.user',
+            'firstname' => 'Profile',
+            'lastname' => 'User',
+            'email' => 'profile.user@example.com',
+            'password' => Hash::make('password123'),
+            'is_active' => true,
+        ]);
+        $user->syncRoles([TenantRoles::STAFF]);
+
+        $response = $this
+            ->actingAs($user)
+            ->patchJson('/api/tenant/auth/profile', [
+                'firstname' => 'Updated',
+                'lastname' => 'Member',
+                'mi' => 'Q',
+                'email' => 'updated.member@example.com',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.user.firstname', 'Updated')
+            ->assertJsonPath('data.user.lastname', 'Member')
+            ->assertJsonPath('data.user.email', 'updated.member@example.com');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'firstname' => 'Updated',
+            'lastname' => 'Member',
+            'mi' => 'Q',
+            'email' => 'updated.member@example.com',
+        ]);
+    }
+
+    public function test_authenticated_user_can_upload_and_remove_avatar(): void
+    {
+        Storage::fake('public');
+
+        $user = User::query()->create([
+            'name' => 'Avatar User',
+            'username' => 'avatar.user',
+            'firstname' => 'Avatar',
+            'lastname' => 'User',
+            'email' => 'avatar.user@example.com',
+            'password' => Hash::make('password123'),
+            'is_active' => true,
+        ]);
+        $user->syncRoles([TenantRoles::STAFF]);
+
+        $uploadResponse = $this
+            ->actingAs($user)
+            ->patch('/api/tenant/auth/profile', [
+                'avatar_file' => UploadedFile::fake()->createWithContent(
+                    'avatar.png',
+                    (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2cyB0AAAAASUVORK5CYII='),
+                ),
+            ], [
+                'Accept' => 'application/json',
+            ]);
+
+        $uploadResponse
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $user->id);
+
+        $user->refresh();
+        $this->assertNotNull($user->avatar_path);
+        $this->assertNotNull($user->avatar_url);
+        Storage::disk('public')->assertExists((string) $user->avatar_path);
+
+        $storedAvatarPath = (string) $user->avatar_path;
+
+        $removeResponse = $this
+            ->actingAs($user)
+            ->patchJson('/api/tenant/auth/profile', [
+                'remove_avatar' => true,
+            ]);
+
+        $removeResponse
+            ->assertOk()
+            ->assertJsonPath('data.user.avatar_url', null);
+
+        $user->refresh();
+        $this->assertNull($user->avatar_path);
+        $this->assertNull($user->avatar_url);
+        Storage::disk('public')->assertMissing($storedAvatarPath);
+    }
+
     private function ensureTenantTables(): void
     {
         if (! Schema::hasTable('users')) {
@@ -404,6 +496,18 @@ class TenantUserApiTest extends TestCase
         if (! Schema::hasColumn('users', 'is_active')) {
             Schema::table('users', function (Blueprint $table): void {
                 $table->boolean('is_active')->default(true);
+            });
+        }
+
+        if (! Schema::hasColumn('users', 'avatar_path')) {
+            Schema::table('users', function (Blueprint $table): void {
+                $table->string('avatar_path')->nullable();
+            });
+        }
+
+        if (! Schema::hasColumn('users', 'avatar_url')) {
+            Schema::table('users', function (Blueprint $table): void {
+                $table->string('avatar_url')->nullable();
             });
         }
     }
