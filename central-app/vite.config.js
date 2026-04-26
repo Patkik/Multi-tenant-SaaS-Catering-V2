@@ -16,11 +16,20 @@ export default defineConfig({
         react(),
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js'],
-            refresh: true,
+            refresh: false,
         }),
         tailwindcss(),
     ],
     server: {
+        host: '::',
+        strictPort: true,
+        hmr: {
+            host: '[::1]',
+            protocol: 'ws',
+            port: 5173,
+            clientPort: 5173,
+        },
+        allowedHosts: ['.localhost'],
         watch: {
             ignored: ['**/storage/framework/views/**'],
         },
