@@ -1,31 +1,35 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useTenantContext } from '../providers/TenantProvider';
 import { CentralWorkspaceLayout } from './layouts/CentralWorkspaceLayout';
 import { TenantWorkspaceLayout } from './layouts/TenantWorkspaceLayout';
-import { CentralAuditLogsPage } from './pages/central/CentralAuditLogsPage';
-import { CentralDashboardPage } from './pages/central/CentralDashboardPage';
-import { CentralLoginPage } from './pages/central/CentralLoginPage';
-import { CentralPlansPricingPage } from './pages/central/CentralPlansPricingPage';
-import { CentralRegistrationWizardPage } from './pages/central/CentralRegistrationWizardPage';
-import { CentralRevenueAnalyticsPage } from './pages/central/CentralRevenueAnalyticsPage';
-import { CentralSystemHealthPage } from './pages/central/CentralSystemHealthPage';
-import { CentralTenantEditPage } from './pages/central/CentralTenantEditPage';
-import { CentralTenantManagementPage } from './pages/central/CentralTenantManagementPage';
-import { CentralUserManagementPage } from './pages/central/CentralUserManagementPage';
-import { TenantBookingWizardPage } from './pages/tenant/TenantBookingWizardPage';
-import { TenantAppearancePage } from './pages/tenant/TenantAppearancePage';
-import { TenantBookingsPage } from './pages/tenant/TenantBookingsPage';
-import { TenantCalendarPage } from './pages/tenant/TenantCalendarPage';
-import { TenantClientsPage } from './pages/tenant/TenantClientsPage';
-import { TenantDashboardPage } from './pages/tenant/TenantDashboardPage';
-import { TenantLoginPage } from './pages/tenant/TenantLoginPage';
-import { TenantMenuBuilderPage } from './pages/tenant/TenantMenuBuilderPage';
-import { TenantPaymentsPage } from './pages/tenant/TenantPaymentsPage';
-import { TenantProfilePage } from './pages/tenant/TenantProfilePage';
-import { TenantSettingsPage } from './pages/tenant/TenantSettingsPage';
-import { TenantStaffAssignmentsPage } from './pages/tenant/TenantStaffAssignmentsPage';
-import { TenantAnalyticsPage } from './pages/tenant/TenantAnalyticsPage';
-import { TenantUsersPage } from './pages/tenant/TenantUsersPage';
+
+const lazyNamed = (factory, exportName) => lazy(() => factory().then((module) => ({ default: module[exportName] })));
+
+const CentralAuditLogsPage = lazyNamed(() => import('./pages/central/CentralAuditLogsPage'), 'CentralAuditLogsPage');
+const CentralDashboardPage = lazyNamed(() => import('./pages/central/CentralDashboardPage'), 'CentralDashboardPage');
+const CentralLoginPage = lazyNamed(() => import('./pages/central/CentralLoginPage'), 'CentralLoginPage');
+const CentralPlansPricingPage = lazyNamed(() => import('./pages/central/CentralPlansPricingPage'), 'CentralPlansPricingPage');
+const CentralRegistrationWizardPage = lazyNamed(() => import('./pages/central/CentralRegistrationWizardPage'), 'CentralRegistrationWizardPage');
+const CentralRevenueAnalyticsPage = lazyNamed(() => import('./pages/central/CentralRevenueAnalyticsPage'), 'CentralRevenueAnalyticsPage');
+const CentralSystemHealthPage = lazyNamed(() => import('./pages/central/CentralSystemHealthPage'), 'CentralSystemHealthPage');
+const CentralTenantEditPage = lazyNamed(() => import('./pages/central/CentralTenantEditPage'), 'CentralTenantEditPage');
+const CentralTenantManagementPage = lazyNamed(() => import('./pages/central/CentralTenantManagementPage'), 'CentralTenantManagementPage');
+const CentralUserManagementPage = lazyNamed(() => import('./pages/central/CentralUserManagementPage'), 'CentralUserManagementPage');
+const TenantBookingWizardPage = lazyNamed(() => import('./pages/tenant/TenantBookingWizardPage'), 'TenantBookingWizardPage');
+const TenantAppearancePage = lazyNamed(() => import('./pages/tenant/TenantAppearancePage'), 'TenantAppearancePage');
+const TenantBookingsPage = lazyNamed(() => import('./pages/tenant/TenantBookingsPage'), 'TenantBookingsPage');
+const TenantCalendarPage = lazyNamed(() => import('./pages/tenant/TenantCalendarPage'), 'TenantCalendarPage');
+const TenantClientsPage = lazyNamed(() => import('./pages/tenant/TenantClientsPage'), 'TenantClientsPage');
+const TenantDashboardPage = lazyNamed(() => import('./pages/tenant/TenantDashboardPage'), 'TenantDashboardPage');
+const TenantLoginPage = lazyNamed(() => import('./pages/tenant/TenantLoginPage'), 'TenantLoginPage');
+const TenantMenuBuilderPage = lazyNamed(() => import('./pages/tenant/TenantMenuBuilderPage'), 'TenantMenuBuilderPage');
+const TenantPaymentsPage = lazyNamed(() => import('./pages/tenant/TenantPaymentsPage'), 'TenantPaymentsPage');
+const TenantProfilePage = lazyNamed(() => import('./pages/tenant/TenantProfilePage'), 'TenantProfilePage');
+const TenantSettingsPage = lazyNamed(() => import('./pages/tenant/TenantSettingsPage'), 'TenantSettingsPage');
+const TenantStaffAssignmentsPage = lazyNamed(() => import('./pages/tenant/TenantStaffAssignmentsPage'), 'TenantStaffAssignmentsPage');
+const TenantAnalyticsPage = lazyNamed(() => import('./pages/tenant/TenantAnalyticsPage'), 'TenantAnalyticsPage');
+const TenantUsersPage = lazyNamed(() => import('./pages/tenant/TenantUsersPage'), 'TenantUsersPage');
 
 function LoadingScreen() {
     return (
@@ -49,28 +53,30 @@ function ErrorScreen({ message }) {
 
 function CentralRoutes() {
     return (
-        <Routes>
-            <Route path="/central/login" element={<CentralLoginPage />} />
-            <Route
-                element={
-                    <RequireCentralAuth>
-                        <CentralWorkspaceLayout />
-                    </RequireCentralAuth>
-                }
-            >
-                <Route index element={<Navigate to="/central/dashboard" replace />} />
-                <Route path="/central/dashboard" element={<CentralDashboardPage />} />
-                <Route path="/central/tenants" element={<CentralTenantManagementPage />} />
-                <Route path="/central/tenants/:tenantId/edit" element={<CentralTenantEditPage />} />
-                <Route path="/central/new-tenant" element={<CentralRegistrationWizardPage />} />
-                <Route path="/central/plans-pricing" element={<CentralPlansPricingPage />} />
-                <Route path="/central/user-management" element={<CentralUserManagementPage />} />
-                <Route path="/central/revenue-analytics" element={<CentralRevenueAnalyticsPage />} />
-                <Route path="/central/system-health" element={<CentralSystemHealthPage />} />
-                <Route path="/central/audit-logs" element={<CentralAuditLogsPage />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/central/dashboard" replace />} />
-        </Routes>
+        <Suspense fallback={<LoadingScreen />}>
+            <Routes>
+                <Route path="/central/login" element={<CentralLoginPage />} />
+                <Route
+                    element={
+                        <RequireCentralAuth>
+                            <CentralWorkspaceLayout />
+                        </RequireCentralAuth>
+                    }
+                >
+                    <Route index element={<Navigate to="/central/dashboard" replace />} />
+                    <Route path="/central/dashboard" element={<CentralDashboardPage />} />
+                    <Route path="/central/tenants" element={<CentralTenantManagementPage />} />
+                    <Route path="/central/tenants/:tenantId/edit" element={<CentralTenantEditPage />} />
+                    <Route path="/central/new-tenant" element={<CentralRegistrationWizardPage />} />
+                    <Route path="/central/plans-pricing" element={<CentralPlansPricingPage />} />
+                    <Route path="/central/user-management" element={<CentralUserManagementPage />} />
+                    <Route path="/central/revenue-analytics" element={<CentralRevenueAnalyticsPage />} />
+                    <Route path="/central/system-health" element={<CentralSystemHealthPage />} />
+                    <Route path="/central/audit-logs" element={<CentralAuditLogsPage />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/central/dashboard" replace />} />
+            </Routes>
+        </Suspense>
     );
 }
 
@@ -90,120 +96,122 @@ function RequireCentralAuth({ children }) {
 
 function TenantRoutes() {
     return (
-        <Routes>
-            <Route path="/login" element={<TenantLoginPage />} />
-            <Route
-                element={
-                    <RequireTenantAuth>
-                        <TenantWorkspaceLayout />
-                    </RequireTenantAuth>
-                }
-            >
+        <Suspense fallback={<LoadingScreen />}>
+            <Routes>
+                <Route path="/login" element={<TenantLoginPage />} />
                 <Route
-                    index
                     element={
-                        <RequireTenantModule module="dashboard">
-                            <TenantDashboardPage />
-                        </RequireTenantModule>
+                        <RequireTenantAuth>
+                            <TenantWorkspaceLayout />
+                        </RequireTenantAuth>
                     }
-                />
-                <Route
-                    path="/clients"
-                    element={
-                        <RequireTenantModule module="clients">
-                            <TenantClientsPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route
-                    path="/bookings"
-                    element={
-                        <RequireTenantModule module="events" feature="event_management">
-                            <TenantBookingsPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route
-                    path="/calendar"
-                    element={
-                        <RequireTenantModule module="events" feature="event_management">
-                            <TenantCalendarPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route path="/events" element={<Navigate to="/bookings" replace />} />
-                <Route
-                    path="/menu-builder"
-                    element={
-                        <RequireTenantModule module="packages">
-                            <TenantMenuBuilderPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route path="/packages" element={<Navigate to="/menu-builder" replace />} />
-                <Route
-                    path="/booking/new"
-                    element={
-                        <RequireTenantModule module="events" feature="event_management">
-                            <TenantBookingWizardPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route
-                    path="/staff-scheduler"
-                    element={
-                        <RequireTenantModule module="assignments" feature="staff_assignment">
-                            <TenantStaffAssignmentsPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route path="/staff" element={<Navigate to="/staff-scheduler" replace />} />
-                <Route
-                    path="/analytics"
-                    element={
-                        <RequireTenantModule module="analytics" feature="advanced_analytics">
-                            <TenantAnalyticsPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route
-                    path="/appearance"
-                    element={
-                        <RequireTenantModule module="branding" feature="branding_controls">
-                            <TenantAppearancePage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route path="/branding" element={<Navigate to="/appearance" replace />} />
-                <Route
-                    path="/invoices"
-                    element={
-                        <RequireTenantModule module="payments">
-                            <TenantPaymentsPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route path="/payments" element={<Navigate to="/invoices" replace />} />
-                <Route path="/profile" element={<TenantProfilePage />} />
-                <Route
-                    path="/settings"
-                    element={
-                        <RequireTenantModule module="users">
-                            <TenantSettingsPage />
-                        </RequireTenantModule>
-                    }
-                />
-                <Route
-                    path="/users"
-                    element={
-                        <RequireTenantModule module="users">
-                            <TenantUsersPage />
-                        </RequireTenantModule>
-                    }
-                />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+                >
+                    <Route
+                        index
+                        element={
+                            <RequireTenantModule module="dashboard">
+                                <TenantDashboardPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route
+                        path="/clients"
+                        element={
+                            <RequireTenantModule module="clients">
+                                <TenantClientsPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route
+                        path="/bookings"
+                        element={
+                            <RequireTenantModule module="events" feature="event_management">
+                                <TenantBookingsPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route
+                        path="/calendar"
+                        element={
+                            <RequireTenantModule module="events" feature="event_management">
+                                <TenantCalendarPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route path="/events" element={<Navigate to="/bookings" replace />} />
+                    <Route
+                        path="/menu-builder"
+                        element={
+                            <RequireTenantModule module="packages">
+                                <TenantMenuBuilderPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route path="/packages" element={<Navigate to="/menu-builder" replace />} />
+                    <Route
+                        path="/booking/new"
+                        element={
+                            <RequireTenantModule module="events" feature="event_management">
+                                <TenantBookingWizardPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route
+                        path="/staff-scheduler"
+                        element={
+                            <RequireTenantModule module="assignments" feature="staff_assignment">
+                                <TenantStaffAssignmentsPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route path="/staff" element={<Navigate to="/staff-scheduler" replace />} />
+                    <Route
+                        path="/analytics"
+                        element={
+                            <RequireTenantModule module="analytics" feature="advanced_analytics">
+                                <TenantAnalyticsPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route
+                        path="/appearance"
+                        element={
+                            <RequireTenantModule module="branding" feature="branding_controls">
+                                <TenantAppearancePage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route path="/branding" element={<Navigate to="/appearance" replace />} />
+                    <Route
+                        path="/invoices"
+                        element={
+                            <RequireTenantModule module="payments">
+                                <TenantPaymentsPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route path="/payments" element={<Navigate to="/invoices" replace />} />
+                    <Route path="/profile" element={<TenantProfilePage />} />
+                    <Route
+                        path="/settings"
+                        element={
+                            <RequireTenantModule module="users">
+                                <TenantSettingsPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                    <Route
+                        path="/users"
+                        element={
+                            <RequireTenantModule module="users">
+                                <TenantUsersPage />
+                            </RequireTenantModule>
+                        }
+                    />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </Suspense>
     );
 }
 

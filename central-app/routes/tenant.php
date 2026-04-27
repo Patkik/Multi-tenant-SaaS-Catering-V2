@@ -11,6 +11,7 @@ use App\Http\Controllers\TenantAssignmentController;
 use App\Http\Controllers\TenantAnalyticsController;
 use App\Http\Controllers\TenantBrandingController;
 use App\Http\Controllers\TenantSettingsController;
+use App\Http\Controllers\TenantSupportController;
 use App\Http\Controllers\TenantUserController;
 use App\Http\Controllers\TenantAuthController;
 use App\Http\Controllers\TenantEventController;
@@ -42,6 +43,7 @@ Route::middleware([
         Route::post('/auth/register', [TenantAuthController::class, 'register'])->middleware('tenant.active');
 
         Route::middleware(['auth:sanctum', 'tenant.active'])->group(function () {
+            Route::post('/support', [TenantSupportController::class, 'store']);
             Route::get('/auth/me', [TenantAuthController::class, 'me']);
             Route::patch('/auth/profile', [TenantAuthController::class, 'updateProfile']);
             Route::post('/auth/logout', [TenantAuthController::class, 'logout']);

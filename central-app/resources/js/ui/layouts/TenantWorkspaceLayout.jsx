@@ -280,7 +280,7 @@ export function TenantWorkspaceLayout() {
                         <button
                             type="button"
                             onClick={signOut}
-                            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
                             Sign Out
                         </button>
@@ -337,7 +337,7 @@ export function TenantWorkspaceLayout() {
                                 type="button"
                                 onClick={handleCheckForUpdates}
                                 disabled={isCheckingUpdates || isApplyingUpdate}
-                                className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                                className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
                                 style={{
                                     borderColor: '#378ADD',
                                     backgroundColor: '#E6F1FB',
@@ -348,24 +348,28 @@ export function TenantWorkspaceLayout() {
                                 {isCheckingUpdates ? 'Checking...' : 'Check for Update'}
                             </button>
                             {hasAvailableUpdate ? (
-                                <span
-                                    className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
+                                <button
+                                    type="button"
+                                    onClick={handleApplyUpdate}
+                                    className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
                                     style={{
                                         borderColor: '#D85A30',
                                         backgroundColor: '#FAECE7',
                                         color: '#712B13',
                                     }}
-                                    title={latestVersionLabel ? `Latest release: ${latestVersionLabel}` : 'A newer release is available'}
+                                    title={latestVersionLabel
+                                        ? `Latest release: ${latestVersionLabel}. Click to ${canApplyAutomatically && canApplyUpdate ? 'apply' : 'open release notes'}.`
+                                        : `A newer release is available. Click to ${canApplyAutomatically && canApplyUpdate ? 'apply it' : 'open release notes'}.`}
                                 >
                                     Update Available
-                                </span>
+                                </button>
                             ) : null}
                             {hasAvailableUpdate ? (
                                 <button
                                     type="button"
                                     onClick={handleApplyUpdate}
                                     disabled={isApplyingUpdate && canApplyUpdate}
-                                    className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
                                     style={{
                                         borderColor: '#378ADD',
                                         backgroundColor: '#E6F1FB',

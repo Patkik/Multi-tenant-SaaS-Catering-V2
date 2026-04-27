@@ -4,6 +4,7 @@ use App\Http\Controllers\CentralAuthController;
 use App\Http\Controllers\CentralDashboardController;
 use App\Http\Controllers\CentralInsightsController;
 use App\Http\Controllers\CentralTenantController;
+use App\Http\Controllers\CentralSupportController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\TenantOnboardingController;
 use App\Support\CentralPermissions;
@@ -24,6 +25,7 @@ Route::prefix('/central/auth')->group(function () {
 });
 
 Route::prefix('/central')->middleware('auth:sanctum')->group(function () {
+    Route::post('/support', [CentralSupportController::class, 'store']);
     Route::get('/dashboard', [CentralDashboardController::class, 'stats'])
         ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
     Route::get('/plans', [CentralDashboardController::class, 'plans'])

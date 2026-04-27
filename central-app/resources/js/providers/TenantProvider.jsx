@@ -80,8 +80,11 @@ export function TenantProvider({ children }) {
     }, [primaryColor]);
 
     const signOut = useCallback(async () => {
-        await logoutTenantUser();
-        setAuthTokenState(null);
+        try {
+            await logoutTenantUser();
+        } finally {
+            setAuthTokenState(null);
+        }
     }, []);
 
     const updateAuthToken = useCallback((token) => {
@@ -89,8 +92,11 @@ export function TenantProvider({ children }) {
     }, []);
 
     const centralSignOut = useCallback(async () => {
-        await logoutCentralUser();
-        setCentralAuthTokenState(null);
+        try {
+            await logoutCentralUser();
+        } finally {
+            setCentralAuthTokenState(null);
+        }
     }, []);
 
     const updateCentralAuthToken = useCallback((token) => {

@@ -1,10 +1,13 @@
-import { StrictMode } from 'react';
+import { StrictMode, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import App from './ui/App';
 import { TenantProvider } from './providers/TenantProvider';
+
+const ReactQueryDevtools = lazy(() =>
+    import('@tanstack/react-query-devtools').then((module) => ({ default: module.ReactQueryDevtools })),
+);
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -28,7 +31,11 @@ if (mountNode) {
                         <App />
                     </TenantProvider>
                 </BrowserRouter>
-                <ReactQueryDevtools initialIsOpen={false} />
+                {import.meta.env.DEV ? (
+                    <Suspense fallback={null}>
+                        <ReactQueryDevtools initialIsOpen={false} />
+                    </Suspense>
+                ) : null}
             </QueryClientProvider>
         </StrictMode>,
     );

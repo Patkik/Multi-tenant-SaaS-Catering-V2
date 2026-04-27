@@ -254,7 +254,7 @@ export function CentralWorkspaceLayout() {
                     <button
                         type="button"
                         onClick={centralSignOut}
-                        className="central-button mt-2.5 w-full px-2 py-1.5 text-[11px] font-medium"
+                        className="central-button mt-2.5 w-full cursor-pointer px-2 py-1.5 text-[11px] font-medium"
                     >
                         Sign out
                     </button>
@@ -281,7 +281,7 @@ export function CentralWorkspaceLayout() {
                             type="button"
                             onClick={handleCheckForUpdates}
                             disabled={isCheckingUpdates || isApplyingUpdate || isSyncingVersion}
-                            className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                            className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
                             style={{
                                 borderColor: '#378ADD',
                                 backgroundColor: '#E6F1FB',
@@ -295,7 +295,7 @@ export function CentralWorkspaceLayout() {
                             type="button"
                             onClick={handleSyncVersion}
                             disabled={isApplyingUpdate || isCheckingUpdates || isSyncingVersion}
-                            className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                            className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
                             style={{
                                 borderColor: '#1D9E75',
                                 backgroundColor: '#E1F5EE',
@@ -306,24 +306,28 @@ export function CentralWorkspaceLayout() {
                             {isSyncingVersion ? 'Syncing...' : 'Sync Version'}
                         </button>
                         {hasAvailableUpdate ? (
-                            <span
-                                className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
+                            <button
+                                type="button"
+                                onClick={handleApplyUpdate}
+                                className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none"
                                 style={{
                                     borderColor: '#D85A30',
                                     backgroundColor: '#FAECE7',
                                     color: '#712B13',
                                 }}
-                                title={latestVersionLabel ? `Latest release: ${latestVersionLabel}` : 'A newer release is available'}
+                                title={latestVersionLabel
+                                    ? `Latest release: ${latestVersionLabel}. Click to ${canApplyAutomatically ? 'apply' : 'open release notes'}.`
+                                    : `A newer release is available. Click to ${canApplyAutomatically ? 'apply it' : 'open release notes'}.`}
                             >
                                 Update Available
-                            </span>
+                            </button>
                         ) : null}
                         {hasAvailableUpdate ? (
                             <button
                                 type="button"
                                 onClick={handleApplyUpdate}
                                 disabled={isApplyingUpdate}
-                                className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                                className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
                                 style={{
                                     borderColor: '#378ADD',
                                     backgroundColor: '#E6F1FB',
