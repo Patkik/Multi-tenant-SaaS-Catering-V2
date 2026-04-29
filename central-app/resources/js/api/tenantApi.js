@@ -52,6 +52,12 @@ export async function updateTenantProfile(payload) {
     return response.data.data;
 }
 
+export async function submitTenantSupportRequest(payload) {
+    const response = await http.post('/api/tenant/support', payload);
+
+    return response.data.data;
+}
+
 export async function logoutTenantUser() {
     try {
         await http.post('/api/tenant/auth/logout');

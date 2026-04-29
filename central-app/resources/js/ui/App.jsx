@@ -9,6 +9,7 @@ const lazyNamed = (factory, exportName) => lazy(() => factory().then((module) =>
 const CentralAuditLogsPage = lazyNamed(() => import('./pages/central/CentralAuditLogsPage'), 'CentralAuditLogsPage');
 const CentralDashboardPage = lazyNamed(() => import('./pages/central/CentralDashboardPage'), 'CentralDashboardPage');
 const CentralLoginPage = lazyNamed(() => import('./pages/central/CentralLoginPage'), 'CentralLoginPage');
+const CentralPlanEditPage = lazyNamed(() => import('./pages/central/CentralPlanEditPage'), 'CentralPlanEditPage');
 const CentralPlansPricingPage = lazyNamed(() => import('./pages/central/CentralPlansPricingPage'), 'CentralPlansPricingPage');
 const CentralRegistrationWizardPage = lazyNamed(() => import('./pages/central/CentralRegistrationWizardPage'), 'CentralRegistrationWizardPage');
 const CentralRevenueAnalyticsPage = lazyNamed(() => import('./pages/central/CentralRevenueAnalyticsPage'), 'CentralRevenueAnalyticsPage');
@@ -30,6 +31,7 @@ const TenantSettingsPage = lazyNamed(() => import('./pages/tenant/TenantSettings
 const TenantStaffAssignmentsPage = lazyNamed(() => import('./pages/tenant/TenantStaffAssignmentsPage'), 'TenantStaffAssignmentsPage');
 const TenantAnalyticsPage = lazyNamed(() => import('./pages/tenant/TenantAnalyticsPage'), 'TenantAnalyticsPage');
 const TenantUsersPage = lazyNamed(() => import('./pages/tenant/TenantUsersPage'), 'TenantUsersPage');
+const TenantSupportPage = lazyNamed(() => import('./pages/tenant/TenantSupportPage'), 'TenantSupportPage');
 
 function LoadingScreen() {
     return (
@@ -69,6 +71,7 @@ function CentralRoutes() {
                     <Route path="/central/tenants/:tenantId/edit" element={<CentralTenantEditPage />} />
                     <Route path="/central/new-tenant" element={<CentralRegistrationWizardPage />} />
                     <Route path="/central/plans-pricing" element={<CentralPlansPricingPage />} />
+                    <Route path="/central/plans-pricing/:plan/edit" element={<CentralPlanEditPage />} />
                     <Route path="/central/user-management" element={<CentralUserManagementPage />} />
                     <Route path="/central/revenue-analytics" element={<CentralRevenueAnalyticsPage />} />
                     <Route path="/central/system-health" element={<CentralSystemHealthPage />} />
@@ -208,6 +211,7 @@ function TenantRoutes() {
                             </RequireTenantModule>
                         }
                     />
+                    <Route path="/support" element={<TenantSupportPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

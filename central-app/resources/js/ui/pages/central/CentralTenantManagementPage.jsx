@@ -75,16 +75,16 @@ function resolveTenantHost(tenant) {
     const subdomainHost = normalizeTenantHost(tenant?.subdomain);
     const fullDomainHost = normalizeTenantHost(tenant?.full_domain);
 
-    if (subdomainHost.includes('.')) {
-        return subdomainHost;
+    if (subdomainHost !== '') {
+        if (subdomainHost.includes('.')) {
+            return subdomainHost;
+        }
+
+        return `${subdomainHost}.localhost`;
     }
 
     if (fullDomainHost !== '') {
         return fullDomainHost;
-    }
-
-    if (subdomainHost !== '') {
-        return `${subdomainHost}.localhost`;
     }
 
     return '';

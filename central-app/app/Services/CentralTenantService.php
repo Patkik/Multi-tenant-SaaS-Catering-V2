@@ -194,10 +194,12 @@ class CentralTenantService
 
         PlanFeatures::clearCache();
 
+        $updatedPlan = PlanFeatures::plans()[$normalizedPlan] ?? PlanFeatures::detailsForPlan($normalizedPlan);
+
         return [
             'plan' => [
                 'key' => $normalizedPlan,
-                ...PlanFeatures::detailsForPlan($normalizedPlan),
+                ...$updatedPlan,
             ],
         ];
     }

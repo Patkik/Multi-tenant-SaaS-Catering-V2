@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(at: env('APP_TRUSTED_PROXIES', '*'));
+        $middleware->statefulApi();
+
         $middleware->alias([
             'tenant.feature' => EnsureTenantFeatureEnabled::class,
             'tenant.active' => EnsureTenantIsActive::class,

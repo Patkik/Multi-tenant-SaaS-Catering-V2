@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { fetchCentralPlansPricing } from '../../../api/centralApi';
 import { formatCurrency } from '../../../lib/formatters';
 
@@ -57,13 +58,13 @@ export function CentralPlansPricingPage() {
                                 <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={planBadgeStyles[label] ?? planBadgeStyles.Free}>
                                     {label}
                                 </span>
-                                <button
-                                    type="button"
+                                <Link
+                                    to={`/central/plans-pricing/${plan.key}/edit`}
                                     className="rounded-[var(--border-radius-md)] border px-2 py-1 text-[11px]"
                                     style={{ borderColor: 'var(--color-border-tertiary)' }}
                                 >
                                     Edit plan
-                                </button>
+                                </Link>
                             </div>
                             <p className="mt-2 text-[22px] font-semibold">{formatCurrency(plan.monthly_price)}/mo</p>
                             <p className="mt-2 text-[12px]">

@@ -3,6 +3,26 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$resolveSecret = static function (?string $value, ?string $fileEnv = null): ?string {
+    if (filled($value)) {
+        return $value;
+    }
+
+    if ($fileEnv) {
+        $path = env($fileEnv);
+
+        if (filled($path) && is_string($path) && is_file($path)) {
+            $contents = trim((string) file_get_contents($path));
+
+            if ($contents !== '') {
+                return $contents;
+            }
+        }
+    }
+
+    return $value;
+};
+
 return [
 
     /*
@@ -83,7 +103,10 @@ return [
                 'port' => env('DB_LANDLORD_PORT', env('DB_PORT', '3306')),
                 'database' => env('DB_LANDLORD_DATABASE', 'caterpro_landlord'),
                 'username' => env('DB_LANDLORD_USERNAME', env('DB_USERNAME', 'root')),
-                'password' => env('DB_LANDLORD_PASSWORD', env('DB_PASSWORD', '')),
+                'password' => $resolveSecret(
+                    env('DB_LANDLORD_PASSWORD', env('DB_PASSWORD', '')),
+                    'DB_LANDLORD_PASSWORD_FILE'
+                ),
                 'unix_socket' => env('DB_LANDLORD_SOCKET', env('DB_SOCKET', '')),
                 'charset' => env('DB_LANDLORD_CHARSET', env('DB_CHARSET', 'utf8mb4')),
                 'collation' => env('DB_LANDLORD_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
@@ -115,7 +138,10 @@ return [
                 'port' => env('DB_TENANT_PORT', env('DB_PORT', '3306')),
                 'database' => env('DB_TENANT_DATABASE', null),
                 'username' => env('DB_TENANT_USERNAME', env('DB_USERNAME', 'root')),
-                'password' => env('DB_TENANT_PASSWORD', env('DB_PASSWORD', '')),
+                'password' => $resolveSecret(
+                    env('DB_TENANT_PASSWORD', env('DB_PASSWORD', '')),
+                    'DB_TENANT_PASSWORD_FILE'
+                ),
                 'unix_socket' => env('DB_TENANT_SOCKET', env('DB_SOCKET', '')),
                 'charset' => env('DB_TENANT_CHARSET', env('DB_CHARSET', 'utf8mb4')),
                 'collation' => env('DB_TENANT_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
@@ -149,6 +175,61 @@ return [
                 'database' => env('DB_TENANT_DATABASE', null),
                 'username' => env('DB_TENANT_USERNAME', env('DB_USERNAME', 'root')),
                 'password' => env('DB_TENANT_PASSWORD', env('DB_PASSWORD', '')),
+                'unix_socket' => env('DB_TENANT_SOCKET', env('DB_SOCKET', '')),
+                'charset' => env('DB_TENANT_CHARSET', env('DB_CHARSET', 'utf8mb4')),
+                'collation' => env('DB_TENANT_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+                'prefix' => '',
+                'prefix_indexes' => true,
+                'strict' => true,
+                'engine' => null,
+                'options' => extension_loaded('pdo_mysql') ? array_filter([
+                    (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                ]) : [],
+            ],
+
+        // Compatibility aliases expected by deployment scripts
+        'mysql_landlord' => [
+            'driver' => env('DB_LANDLORD_DRIVER', 'mysql'),
+            'url' => env('DB_LANDLORD_URL'),
+            'host' => env('DB_LANDLORD_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_LANDLORD_PORT', env('DB_PORT', '3306')),
+            'database' => env('DB_LANDLORD_DATABASE', 'caterpro_landlord'),
+            'username' => env('DB_LANDLORD_USERNAME', env('DB_USERNAME', 'root')),
+                'password' => $resolveSecret(
+                    env('DB_LANDLORD_PASSWORD', env('DB_PASSWORD', '')),
+                    'DB_LANDLORD_PASSWORD_FILE'
+                ),
+            'unix_socket' => env('DB_LANDLORD_SOCKET', env('DB_SOCKET', '')),
+            'charset' => env('DB_LANDLORD_CHARSET', env('DB_CHARSET', 'utf8mb4')),
+            'collation' => env('DB_LANDLORD_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        'mysql_blueprint' => env('DB_TENANT_DRIVER', 'mysql') === 'sqlite'
+            ? [
+                'driver' => 'sqlite',
+                'url' => env('DB_TENANT_URL'),
+                'database' => env('DB_TENANT_DATABASE', database_path('database.sqlite')),
+                'prefix' => '',
+                'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            ]
+            : [
+                'driver' => env('DB_TENANT_DRIVER', 'mysql'),
+                'url' => env('DB_TENANT_URL'),
+                'host' => env('DB_TENANT_HOST', env('DB_HOST', '127.0.0.1')),
+                'port' => env('DB_TENANT_PORT', env('DB_PORT', '3306')),
+                'database' => env('DB_TENANT_DATABASE', null),
+                'username' => env('DB_TENANT_USERNAME', env('DB_USERNAME', 'root')),
+                'password' => $resolveSecret(
+                    env('DB_TENANT_PASSWORD', env('DB_PASSWORD', '')),
+                    'DB_TENANT_PASSWORD_FILE'
+                ),
                 'unix_socket' => env('DB_TENANT_SOCKET', env('DB_SOCKET', '')),
                 'charset' => env('DB_TENANT_CHARSET', env('DB_CHARSET', 'utf8mb4')),
                 'collation' => env('DB_TENANT_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),

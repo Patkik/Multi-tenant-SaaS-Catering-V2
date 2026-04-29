@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Support\TenantRoles;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
@@ -27,6 +29,16 @@ class TenantSupportApiTest extends TestCase
         parent::setUp();
 
         config()->set('tenancy.bootstrappers', []);
+
+        $tenantDatabasePath = database_path('tenant_support_api_test.sqlite');
+
+        File::delete($tenantDatabasePath);
+        File::put($tenantDatabasePath, '');
+
+        config()->set('database.connections.tenant_template.database', $tenantDatabasePath);
+        config()->set('database.connections.tenant.database', $tenantDatabasePath);
+        config()->set('database.default', 'tenant');
+        DB::purge('tenant');
 
         $this->withoutMiddleware([
             InitializeTenancyBySubdomain::class,
@@ -91,7 +103,7 @@ class TenantSupportApiTest extends TestCase
         Mail::assertSent(SupportMessageMail::class, function (SupportMessageMail $mail): bool {
             return $mail->source === 'tenant'
                 && ($mail->payload['category'] ?? null) === 'feedback'
-                && ($mail->metadata['workspace_name'] ?? null) === 'Tenant Support API Test';
+                && ($mail->supportMetadata['workspace_name'] ?? null) === 'Tenant Support API Test';
         });
     }
 

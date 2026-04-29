@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\PlanFeatures;
 use App\Support\CentralPermissions;
 use App\Support\TenantRoles;
 use Illuminate\Database\Schema\Blueprint;
@@ -111,6 +112,30 @@ class CentralTenantManagementApiTest extends TestCase
         $tenant->refresh();
 
         $this->assertSame('business', $tenant->getAttribute('plan'));
+    }
+
+    public function test_it_updates_a_central_plan_definition_from_the_pricing_screen(): void
+    {
+        $this->actingAsCentralManager();
+
+        $response = $this->patchJson('/api/central/plans/starter', [
+            'monthly_price' => 799,
+            'user_limit' => 12,
+            'monthly_active_event_limit' => null,
+            'features' => ['event_management', 'client_portal', 'staff_assignment'],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.plan.key', 'starter')
+            ->assertJsonPath('data.plan.monthly_price', 799)
+            ->assertJsonPath('data.plan.user_limit', 12)
+            ->assertJsonPath('data.plan.features.0', 'event_management');
+
+        $plans = PlanFeatures::plans();
+
+        $this->assertSame(799, $plans['starter']['monthly_price']);
+        $this->assertSame(12, $plans['starter']['user_limit']);
+        $this->assertSame(['event_management', 'client_portal', 'staff_assignment'], $plans['starter']['features']);
     }
 
     public function test_it_updates_tenant_branding_metadata(): void

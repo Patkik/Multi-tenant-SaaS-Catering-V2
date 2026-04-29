@@ -8,6 +8,7 @@ import { titleCase } from '../../lib/formatters';
 
 const navigation = [
     { to: '/', label: 'Dashboard', module: 'dashboard', end: true },
+    { to: '/support', label: 'Support', alwaysVisible: true },
     { to: '/bookings', label: 'Bookings Kanban', module: 'events', feature: 'event_management' },
     { to: '/calendar', label: 'Calendar Planner', module: 'events', feature: 'event_management' },
     { to: '/menu-builder', label: 'Menu Builder', module: 'packages' },
@@ -127,7 +128,7 @@ export function TenantWorkspaceLayout() {
 
     const navigationItems = useMemo(() => {
         return navigation
-            .filter((item) => allowedModules.includes(item.module))
+            .filter((item) => item.alwaysVisible || allowedModules.includes(item.module))
             .map((item) => {
                 const featureEnabled = item.feature ? enabledFeatures.includes(item.feature) : true;
 

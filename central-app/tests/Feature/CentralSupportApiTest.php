@@ -57,7 +57,7 @@ class CentralSupportApiTest extends TestCase
         Mail::assertSent(SupportMessageMail::class, function (SupportMessageMail $mail): bool {
             return $mail->source === 'central'
                 && ($mail->payload['category'] ?? null) === 'bug'
-                && ($mail->metadata['workspace_name'] ?? null) === 'Central Platform';
+                && ($mail->supportMetadata['workspace_name'] ?? null) === 'Central Platform';
         });
     }
 

@@ -20,39 +20,39 @@
                     <tr>
                         <td style="padding:6px 0;font-weight:700;vertical-align:top;">Workspace</td>
                         <td style="padding:6px 0;">
-                            {{ (string) ($metadata['workspace_name'] ?? $payload['workspace_name'] ?? 'Unknown workspace') }}
-                            @if (! empty($metadata['workspace_id'] ?? $payload['workspace_id'] ?? null))
-                                <span style="color:#6b7280;">(#{{ $metadata['workspace_id'] ?? $payload['workspace_id'] }})</span>
+                            {{ (string) ($supportMetadata['workspace_name'] ?? $payload['workspace_name'] ?? 'Unknown workspace') }}
+                            @if (! empty($supportMetadata['workspace_id'] ?? $payload['workspace_id'] ?? null))
+                                <span style="color:#6b7280;">(#{{ $supportMetadata['workspace_id'] ?? $payload['workspace_id'] }})</span>
                             @endif
                         </td>
                     </tr>
                     <tr>
                         <td style="padding:6px 0;font-weight:700;vertical-align:top;">Contact</td>
                         <td style="padding:6px 0;">
-                            {{ (string) ($metadata['contact_name'] ?? $payload['contact_name'] ?? 'Unknown user') }}
-                            @if (! empty($metadata['contact_email'] ?? $payload['contact_email'] ?? null))
-                                &lt;{{ $metadata['contact_email'] ?? $payload['contact_email'] }}&gt;
+                            {{ (string) ($supportMetadata['contact_name'] ?? $payload['contact_name'] ?? 'Unknown user') }}
+                            @if (! empty($supportMetadata['contact_email'] ?? $payload['contact_email'] ?? null))
+                                &lt;{{ $supportMetadata['contact_email'] ?? $payload['contact_email'] }}&gt;
                             @endif
                         </td>
                     </tr>
                     <tr>
                         <td style="padding:6px 0;font-weight:700;vertical-align:top;">Role</td>
-                        <td style="padding:6px 0;">{{ (string) ($metadata['user_role'] ?? $payload['user_role'] ?? 'Unknown') }}</td>
+                        <td style="padding:6px 0;">{{ (string) ($supportMetadata['user_role'] ?? $payload['user_role'] ?? 'Unknown') }}</td>
                     </tr>
                     <tr>
                         <td style="padding:6px 0;font-weight:700;vertical-align:top;">Page</td>
-                        <td style="padding:6px 0;">{{ (string) ($metadata['page_path'] ?? $payload['page_path'] ?? 'Unknown') }}</td>
+                        <td style="padding:6px 0;">{{ (string) ($supportMetadata['page_path'] ?? $payload['page_path'] ?? 'Unknown') }}</td>
                     </tr>
                     <tr>
                         <td style="padding:6px 0;font-weight:700;vertical-align:top;">App version</td>
-                        <td style="padding:6px 0;">{{ (string) ($metadata['app_version'] ?? $payload['app_version'] ?? 'Unknown') }}</td>
+                        <td style="padding:6px 0;">{{ (string) ($supportMetadata['app_version'] ?? $payload['app_version'] ?? 'Unknown') }}</td>
                     </tr>
                     <tr>
                         <td style="padding:6px 0;font-weight:700;vertical-align:top;">IP / Agent</td>
                         <td style="padding:6px 0;">
-                            {{ (string) ($metadata['request_ip'] ?? 'Unknown IP') }}
-                            @if (! empty($metadata['user_agent'] ?? null))
-                                <div style="margin-top:4px;color:#6b7280;word-break:break-word;">{{ $metadata['user_agent'] }}</div>
+                            {{ (string) ($supportMetadata['request_ip'] ?? 'Unknown IP') }}
+                            @if (! empty($supportMetadata['user_agent'] ?? null))
+                                <div style="margin-top:4px;color:#6b7280;word-break:break-word;">{{ $supportMetadata['user_agent'] }}</div>
                             @endif
                         </td>
                     </tr>

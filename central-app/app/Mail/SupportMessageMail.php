@@ -11,19 +11,19 @@ class SupportMessageMail extends Mailable
 {
     /**
      * @param array<string, mixed> $payload
-     * @param array<string, mixed> $metadata
+     * @param array<string, mixed> $supportMetadata
      */
     public function __construct(
         public readonly string $source,
         public readonly array $payload,
-        public readonly array $metadata = [],
+        public readonly array $supportMetadata = [],
     ) {
     }
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: $this->buildSubject(),
+            subject: $this->formatSubjectLine(),
         );
     }
 
@@ -34,13 +34,13 @@ class SupportMessageMail extends Mailable
             with: [
                 'source' => $this->source,
                 'payload' => $this->payload,
-                'metadata' => $this->metadata,
-                'subjectLine' => $this->buildSubject(),
+                'supportMetadata' => $this->supportMetadata,
+                'subjectLine' => $this->formatSubjectLine(),
             ],
         );
     }
 
-    public function buildSubject(): string
+    protected function formatSubjectLine(): string
     {
         $scopeLabel = Str::title(str_replace(['-', '_'], ' ', $this->source));
         $category = Str::title((string) ($this->payload['category'] ?? 'support'));

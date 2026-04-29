@@ -43,6 +43,12 @@ export async function fetchCentralPlansPricing() {
     return response.data.data;
 }
 
+export async function updateCentralPlan(planKey, payload) {
+    const response = await http.patch(`/api/central/plans/${planKey}`, payload);
+
+    return response.data.data;
+}
+
 export async function fetchCentralUsers(search = '') {
     const response = await http.get('/api/central/users', {
         params: {
