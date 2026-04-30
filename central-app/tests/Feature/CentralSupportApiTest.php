@@ -54,6 +54,12 @@ class CentralSupportApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.message', 'Your support request has been sent to the central team.');
 
+        $this->assertDatabaseHas('support_messages', [
+            'source' => 'central',
+            'subject' => 'Dashboard totals look wrong',
+            'workspace_name' => 'Central Platform',
+        ]);
+
         Mail::assertSent(SupportMessageMail::class, function (SupportMessageMail $mail): bool {
             return $mail->source === 'central'
                 && ($mail->payload['category'] ?? null) === 'bug'
@@ -70,5 +76,50 @@ class CentralSupportApiTest extends TestCase
         ]);
 
         $response->assertUnauthorized();
+    }
+
+    public function test_it_lists_tenant_support_submissions_for_central_users(): void
+    {
+        $user = User::factory()->create([
+            'name' => 'Central Admin',
+            'email' => 'admin@caterpro.local',
+            'password' => Hash::make('password123'),
+        ]);
+        $user->givePermissionTo(CentralPermissions::DASHBOARD_VIEW);
+
+        Sanctum::actingAs($user, ['*']);
+
+        $this->postJson('/api/central/support', [
+            'category' => 'feedback',
+            'subject' => 'Central feedback sample',
+            'message' => 'This is a feedback sample created from the central workspace.',
+            'contact_name' => 'Central Admin',
+            'contact_email' => 'admin@caterpro.local',
+            'page_path' => '/central/support',
+            'user_role' => 'Central Admin',
+        ])->assertOk();
+
+        \Illuminate\Support\Facades\DB::table('support_messages')->insert([
+            'source' => 'tenant',
+            'category' => 'bug',
+            'subject' => 'Tenant issue sample',
+            'message' => 'Tenant could not load the bookings board after a recent update.',
+            'contact_name' => 'Tenant Manager',
+            'contact_email' => 'tenant@example.com',
+            'workspace_name' => 'Demo Tenant',
+            'workspace_id' => 'tenant-demo',
+            'tenant_id' => 'tenant-demo',
+            'page_path' => '/bookings',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson('/api/central/support/submissions?source=tenant');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.meta.total', 1)
+            ->assertJsonPath('data.items.0.source', 'tenant')
+            ->assertJsonPath('data.items.0.subject', 'Tenant issue sample');
     }
 }

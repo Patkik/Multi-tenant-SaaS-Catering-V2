@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
-import { submitCentralSupportRequest } from '../../../api/centralApi';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { fetchCentralSupportSubmissions, submitCentralSupportRequest } from '../../../api/centralApi';
 import { submitTenantSupportRequest } from '../../../api/tenantApi';
 import { useTenantContext } from '../../../providers/TenantProvider';
 
@@ -55,6 +55,61 @@ function SupportStatusPill({ label, value }) {
     );
 }
 
+function formatSubmittedAt(value) {
+    if (!value) {
+        return 'Unknown time';
+    }
+
+    const parsed = new Date(value);
+
+    if (Number.isNaN(parsed.getTime())) {
+        return 'Unknown time';
+    }
+
+    return parsed.toLocaleString();
+}
+
+function SupportSubmissionItem({ item }) {
+    const isBug = item.category === 'bug';
+
+    return (
+        <article className="rounded-[var(--border-radius-md)] border p-3" style={{ borderColor: 'var(--color-border-tertiary)' }}>
+            <div className="flex flex-wrap items-center gap-2">
+                <span
+                    className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase"
+                    style={{
+                        borderColor: isBug ? '#D85A30' : '#378ADD',
+                        backgroundColor: isBug ? '#FBE9E2' : '#E6F1FB',
+                        color: isBug ? '#712B13' : '#0C447C',
+                    }}
+                >
+                    {item.category}
+                </span>
+                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    {formatSubmittedAt(item.created_at)}
+                </span>
+            </div>
+            <h3 className="mt-2 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                {item.subject}
+            </h3>
+            <p className="mt-1 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                {item.message}
+            </p>
+            <div className="mt-2 grid gap-1 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <p>
+                    Workspace: {item.workspace_name || 'Unknown'}
+                    {item.workspace_id ? ` (#${item.workspace_id})` : ''}
+                </p>
+                <p>
+                    Contact: {item.contact_name || 'Unknown'}
+                    {item.contact_email ? ` <${item.contact_email}>` : ''}
+                </p>
+                <p>Page: {item.page_path || 'Unknown'}</p>
+            </div>
+        </article>
+    );
+}
+
 export function TenantSupportPage() {
     const { pathname, search } = useLocation();
     const { mode, tenantProfile, authUser, centralAuthUser } = useTenantContext();
@@ -69,15 +124,21 @@ export function TenantSupportPage() {
     const workspaceName = isCentralMode ? 'Central Platform' : tenantProfile?.company_name || 'Tenant Workspace';
     const workspaceId = isCentralMode ? 'central' : tenantProfile?.tenant_id || tenantProfile?.id || undefined;
 
+    const supportSubmissionsQuery = useQuery({
+        queryKey: ['central-support-submissions', 'tenant'],
+        queryFn: () => fetchCentralSupportSubmissions({ source: 'tenant', perPage: 30 }),
+        enabled: isCentralMode,
+    });
+
     useEffect(() => {
         setFormState((previous) => ({
             ...previous,
             contact_name: previous.contact_name || activeUser?.display_name || activeUser?.name || '',
             contact_email: previous.contact_email || activeUser?.email || '',
             page_path: previous.page_path || `${pathname}${search}`,
-            subject: previous.subject || buildSubject(previous.category),
+            subject: previous.subject || buildSubject(previous.category, isCentralMode),
         }));
-    }, [activeUser?.display_name, activeUser?.email, activeUser?.name, pathname, search]);
+    }, [activeUser?.display_name, activeUser?.email, activeUser?.name, isCentralMode, pathname, search]);
 
     const supportMutation = useMutation({
         mutationFn: (payload) => (isCentralMode ? submitCentralSupportRequest(payload) : submitTenantSupportRequest(payload)),
@@ -91,6 +152,10 @@ export function TenantSupportPage() {
                 page_path: `${pathname}${search}`,
                 subject: buildSubject('feedback', isCentralMode),
             });
+
+            if (isCentralMode) {
+                supportSubmissionsQuery.refetch();
+            }
         },
     });
 
@@ -172,15 +237,27 @@ export function TenantSupportPage() {
                         const checked = formState.category === option.value;
 
                         return (
-                <p className="mt-4 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                    The message is emailed to the {supportInboxLabel}.
-                </p>
-                                    <span className="block font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                                        {option.label}
-                                    </span>
-                                    <span className="block text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                                        {option.description}
-                                    </span>
+                            <label
+                                key={option.value}
+                                className="cursor-pointer rounded-[var(--border-radius-md)] border p-3 transition"
+                                style={{
+                                    borderColor: checked ? '#378ADD' : 'var(--color-border-tertiary)',
+                                    backgroundColor: checked ? '#E6F1FB' : 'transparent',
+                                }}
+                            >
+                                <input
+                                    type="radio"
+                                    name="support-category"
+                                    value={option.value}
+                                    checked={checked}
+                                    onChange={() => handleCategoryChange(option.value)}
+                                    className="sr-only"
+                                />
+                                <span className="block font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                                    {option.label}
+                                </span>
+                                <span className="block text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                                    {option.description}
                                 </span>
                             </label>
                         );
@@ -277,6 +354,55 @@ export function TenantSupportPage() {
                     </p>
                 </div>
             </form>
+
+            {isCentralMode ? (
+                <section className="central-card p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h2 className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                                Tenant Support Submissions
+                            </h2>
+                            <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                                Latest support requests submitted from tenant workspaces.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => supportSubmissionsQuery.refetch()}
+                            className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase"
+                            style={supportActionButtonStyle}
+                        >
+                            Refresh
+                        </button>
+                    </div>
+
+                    {supportSubmissionsQuery.isLoading ? (
+                        <p className="mt-3 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                            Loading tenant support submissions...
+                        </p>
+                    ) : null}
+
+                    {supportSubmissionsQuery.isError ? (
+                        <p className="mt-3 rounded-[var(--border-radius-md)] border px-3 py-2 text-[11px]" style={{ borderColor: '#D85A30', color: '#712B13' }}>
+                            Unable to load tenant support submissions right now.
+                        </p>
+                    ) : null}
+
+                    {!supportSubmissionsQuery.isLoading && !supportSubmissionsQuery.isError ? (
+                        <div className="mt-3 space-y-2">
+                            {(supportSubmissionsQuery.data?.items ?? []).length === 0 ? (
+                                <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                                    No tenant support submissions yet.
+                                </p>
+                            ) : (
+                                (supportSubmissionsQuery.data?.items ?? []).map((item) => (
+                                    <SupportSubmissionItem key={item.id} item={item} />
+                                ))
+                            )}
+                        </div>
+                    ) : null}
+                </section>
+            ) : null}
         </div>
     );
 }

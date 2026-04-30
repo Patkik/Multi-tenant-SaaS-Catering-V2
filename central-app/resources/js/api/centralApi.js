@@ -31,6 +31,18 @@ export async function submitCentralSupportRequest(payload) {
     return response.data.data;
 }
 
+export async function fetchCentralSupportSubmissions({ source = 'tenant', search = '', perPage = 20 } = {}) {
+    const response = await http.get('/api/central/support/submissions', {
+        params: {
+            source: source || undefined,
+            search: search || undefined,
+            per_page: perPage,
+        },
+    });
+
+    return response.data.data;
+}
+
 export async function fetchCentralDashboard() {
     const response = await http.get('/api/central/dashboard');
 

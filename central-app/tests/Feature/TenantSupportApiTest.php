@@ -37,6 +37,7 @@ class TenantSupportApiTest extends TestCase
 
         config()->set('database.connections.tenant_template.database', $tenantDatabasePath);
         config()->set('database.connections.tenant.database', $tenantDatabasePath);
+        config()->set('tenancy.database.central_connection', 'landlord');
         config()->set('database.default', 'tenant');
         DB::purge('tenant');
 
@@ -47,6 +48,7 @@ class TenantSupportApiTest extends TestCase
 
         $this->ensureTenantTables();
         $this->ensurePermissionTables();
+        $this->ensureLandlordSupportTables();
 
         $this->tenant = Tenant::create([
             'id' => 'tenant-support-api-test',
@@ -100,6 +102,12 @@ class TenantSupportApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.message', 'Your support request has been sent to the tenant support inbox.');
 
+        $this->assertDatabaseHas('support_messages', [
+            'source' => 'tenant',
+            'subject' => 'Could the bookings page show color tags?',
+            'workspace_name' => 'Tenant Support API Test',
+        ], 'landlord');
+
         Mail::assertSent(SupportMessageMail::class, function (SupportMessageMail $mail): bool {
             return $mail->source === 'tenant'
                 && ($mail->payload['category'] ?? null) === 'feedback'
@@ -135,6 +143,7 @@ class TenantSupportApiTest extends TestCase
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
+
     }
 
     private function ensurePermissionTables(): void
@@ -152,6 +161,33 @@ class TenantSupportApiTest extends TestCase
             $table->unsignedBigInteger('model_id');
             $table->string('model_type');
             $table->index(['model_id', 'model_type']);
+        });
+    }
+
+    private function ensureLandlordSupportTables(): void
+    {
+        if (Schema::connection('landlord')->hasTable('support_messages')) {
+            return;
+        }
+
+        Schema::connection('landlord')->create('support_messages', function (Blueprint $table): void {
+            $table->id();
+            $table->string('source', 20);
+            $table->string('category', 40);
+            $table->string('subject', 120);
+            $table->text('message');
+            $table->string('contact_name')->nullable();
+            $table->string('contact_email')->nullable();
+            $table->string('workspace_name')->nullable();
+            $table->string('workspace_id')->nullable();
+            $table->string('tenant_id')->nullable();
+            $table->string('page_path')->nullable();
+            $table->string('app_version', 50)->nullable();
+            $table->string('user_role')->nullable();
+            $table->string('tenant_domain')->nullable();
+            $table->string('request_ip', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->timestamps();
         });
     }
 }

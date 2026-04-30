@@ -29,6 +29,16 @@ Route::middleware('throttle:120,1')->group(function () {
 
     Route::prefix('/central')->middleware('auth:sanctum')->group(function () {
         Route::post('/support', [CentralSupportController::class, 'store']);
+        Route::get('/support/submissions', [CentralSupportController::class, 'index'])
+            ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+        Route::get('/support/tenant-submissions', [CentralSupportController::class, 'tenantSubmissions'])
+            ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+        Route::get('/support/{support}', [CentralSupportController::class, 'show'])
+            ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+        Route::get('/support/by-tenant/{tenant}', [CentralSupportController::class, 'byTenant'])
+            ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+        Route::get('/support/statistics', [CentralSupportController::class, 'statistics'])
+            ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
         Route::get('/dashboard', [CentralDashboardController::class, 'stats'])
             ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
         Route::get('/plans', [CentralDashboardController::class, 'plans'])
