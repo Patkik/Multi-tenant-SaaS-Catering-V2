@@ -19,7 +19,7 @@ const categoryOptions = [
 
 const defaultFormState = {
     category: 'feedback',
-    subject: '',
+    subject: buildSubject('feedback'),
     message: '',
     contact_name: '',
     contact_email: '',
@@ -35,6 +35,9 @@ export function TenantSupportPage() {
     const { tenantProfile, authUser } = useTenantContext();
     const [formState, setFormState] = useState(defaultFormState);
     const [successMessage, setSuccessMessage] = useState('');
+    const trimmedSubject = formState.subject.trim();
+    const trimmedMessage = formState.message.trim();
+    const canSubmit = trimmedSubject.length > 0 && trimmedMessage.length >= 20;
 
     useEffect(() => {
         setFormState((previous) => ({
@@ -83,10 +86,14 @@ export function TenantSupportPage() {
     function handleSubmit(event) {
         event.preventDefault();
 
+        if (!canSubmit) {
+            return;
+        }
+
         supportMutation.mutate({
             category: formState.category,
-            subject: formState.subject.trim(),
-            message: formState.message.trim(),
+            subject: trimmedSubject,
+            message: trimmedMessage,
             contact_name: formState.contact_name.trim() || undefined,
             contact_email: formState.contact_email.trim() || undefined,
             workspace_name: workspaceName,
@@ -106,7 +113,7 @@ export function TenantSupportPage() {
                     </p>
                     <h1 className="mt-1 text-lg font-semibold">Send feedback or report a bug</h1>
                     <p className="mt-1 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-                        Use this form to share product feedback, flag issues, or describe something that is not working as expected.
+                        Use this form to share product feedback, flag issues, or describe something that is not working as expected. Messages must be at least 20 characters long.
                     </p>
                 </div>
             </section>
@@ -221,7 +228,7 @@ export function TenantSupportPage() {
                 <div className="mt-4 flex items-center gap-2">
                     <button
                         type="submit"
-                        disabled={supportMutation.isPending}
+                        disabled={supportMutation.isPending || !canSubmit}
                         className="central-button-primary px-4 py-2 text-[12px] font-semibold disabled:opacity-60"
                     >
                         {supportMutation.isPending ? 'Sending...' : 'Send support request'}

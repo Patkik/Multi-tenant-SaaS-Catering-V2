@@ -150,17 +150,22 @@ services:
       web:
         condition: service_healthy
     environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
-      NGROK_DOMAIN: ${NGROK_DOMAIN}
+      NGROK_AUTHTOKEN: 3BLS3nOQT6jWk3FZJN51hcspTcz_4T8U8Zfhvwjzo6ua8TYFP
+      NGROK_DOMAIN: https://furuncular-shavonda-unprevalently.ngrok-free.dev
       NGROK_BASIC_AUTH: ${NGROK_BASIC_AUTH}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        if [ -z "$$NGROK_AUTHTOKEN" ] || [ -z "$$NGROK_DOMAIN" ] || [ -z "$$NGROK_BASIC_AUTH" ]; then
-          echo "NGROK_AUTHTOKEN, NGROK_DOMAIN, and NGROK_BASIC_AUTH must be set"
+        if [ -z "$$NGROK_AUTHTOKEN" ] || [ -z "$$NGROK_DOMAIN" ]; then
+          echo "NGROK_AUTHTOKEN and NGROK_DOMAIN must be set"
           exit 1
         fi
-        exec ngrok http --authtoken="$$NGROK_AUTHTOKEN" --domain="$$NGROK_DOMAIN" --basic-auth="$$NGROK_BASIC_AUTH" web:80
+        if [ -z "$$NGROK_BASIC_AUTH" ]; then
+          echo "NGROK_BASIC_AUTH not set — starting ngrok without basic auth"
+          exec ngrok http --authtoken="$$NGROK_AUTHTOKEN" --domain="$$NGROK_DOMAIN" web:80
+        else
+          exec ngrok http --authtoken="$$NGROK_AUTHTOKEN" --domain="$$NGROK_DOMAIN" --basic-auth="$$NGROK_BASIC_AUTH" web:80
+        fi
     restart: unless-stopped
 
 volumes:
