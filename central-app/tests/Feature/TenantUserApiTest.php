@@ -275,6 +275,18 @@ class TenantUserApiTest extends TestCase
             ->assertJsonPath('data.access_restriction_reason', EnsureTenantIsActive::suspensionMessage());
     }
 
+    public function test_tenant_by_id_capabilities_returns_bad_request_without_tenant_identifier(): void
+    {
+        tenancy()->end();
+
+        $response = $this->getJson('/api/tenant-by-id/capabilities');
+
+        $response
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Tenant identifier is required.')
+            ->assertJsonPath('reason_code', 'tenant_identifier_missing');
+    }
+
     public function test_tenant_app_updates_endpoint_returns_release_status(): void
     {
         Cache::flush();
