@@ -61,6 +61,11 @@ services:
       - "80:80"
       - "443:443"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend-builder:
     build:
@@ -69,6 +74,36 @@ services:
     volumes:
       - frontend_dist:/dist
     command: ["/bin/sh", "-c", "echo built && sleep infinity"]
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles:
+      - tunnel
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-}
+      NGROK_BASIC_AUTH: ${NGROK_BASIC_AUTH:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ARGS="http web:80"
+        if [ -n "$$NGROK_AUTHTOKEN" ]; then
+          ARGS="$$ARGS --authtoken=$$NGROK_AUTHTOKEN"
+        fi
+        if [ -n "$$NGROK_DOMAIN" ]; then
+          ARGS="$$ARGS --domain=$$NGROK_DOMAIN"
+        fi
+        if [ -n "$$NGROK_BASIC_AUTH" ]; then
+          ARGS="$$ARGS --basic-auth=$$NGROK_BASIC_AUTH"
+        fi
+        echo "Starting ngrok tunnel..."
+        exec ngrok $$ARGS
+    ports:
+      - "4040:4040"
+    restart: unless-stopped
 
 volumes:
   db_data:

@@ -87,7 +87,7 @@ class CentralInsightsController extends Controller
     public function syncAppVersion(): JsonResponse
     {
         return response()->json([
-            'data' => $this->appUpdateService->syncCurrentVersion(),
+            'data' => $this->appUpdateService->syncVersionFromGitHub(),
         ]);
     }
 

@@ -12,6 +12,10 @@ docker compose up --build -d
 # view logs
 docker compose logs -f web
 
+# to expose the application to the internet via ngrok
+# ensure NGROK_AUTHTOKEN is set in your .env
+docker compose --profile tunnel up -d ngrok
+
 # run migrations
 docker compose exec app php artisan migrate --force
 

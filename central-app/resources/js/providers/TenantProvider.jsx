@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchCentralMe, logoutCentralUser } from '../api/centralApi';
 import { fetchTenantCapabilities, fetchTenantMe, logoutTenantUser } from '../api/tenantApi';
 import { isTenantContextFallbackError } from '../lib/formatters';
-import { clearCentralToken, clearTenantToken, getCentralToken, getTenantToken } from '../lib/http';
+import { clearCentralToken, clearTenantToken, getCentralToken, getTenantToken, clearActiveTenantId } from '../lib/http';
 
 const DEFAULT_PRIMARY_COLOR = '#0B8F66';
 
@@ -83,6 +83,7 @@ export function TenantProvider({ children }) {
         try {
             await logoutTenantUser();
         } finally {
+            clearActiveTenantId();
             setAuthTokenState(null);
         }
     }, []);

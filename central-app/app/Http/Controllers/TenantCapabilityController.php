@@ -92,4 +92,11 @@ class TenantCapabilityController extends Controller
             'data' => $this->appUpdateService->applyLatestRelease(),
         ]);
     }
+
+    public function syncAppVersion(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->appUpdateService->syncVersionFromGitHub(),
+        ]);
+    }
 }

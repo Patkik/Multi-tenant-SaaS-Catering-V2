@@ -121,18 +121,35 @@ export function CentralTenantManagementPage() {
     const rows = tenantsQuery.data?.data ?? [];
     const total = tenantsQuery.data?.total ?? rows.length;
 
-    const handleViewTenant = (tenantHost) => {
-        if (!tenantHost) {
+    const handleViewTenant = (tenant) => {
+        const tenantSubdomain = normalizeTenantHost(tenant?.subdomain);
+
+        if (!tenantSubdomain) {
             return;
         }
 
-        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-        const currentPort = window.location.port;
-        const includePort = currentPort !== '' && currentPort !== '80' && currentPort !== '443';
-        const portSuffix = includePort ? `:${currentPort}` : '';
+        const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
+        const port = window.location.port;
+        const portSuffix = port && port !== '80' && port !== '443' ? `:${port}` : '';
 
-        window.location.assign(`${protocol}//${tenantHost}${portSuffix}/login`);
+        // Check if we're on a real subdomain-capable host (localhost or .localhost).
+        // On ngrok / tunnels we must use query-param routing instead.
+        const isLocalhostEnv =
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname.endsWith('.localhost');
+
+        if (isLocalhostEnv) {
+            // Build e.g. http://jollibee.localhost:8000/login
+            window.open(`${protocol}//` + tenantSubdomain + `.localhost${portSuffix}/login`, '_blank');
+        } else {
+            // Build e.g. https://ngrok-url.ngrok-free.dev/?tenant=jollibee
+            const origin = `${protocol}//${hostname}${portSuffix}`;
+            window.open(`${origin}/?tenant=${encodeURIComponent(tenantSubdomain)}`, '_blank');
+        }
     };
+
 
     return (
         <div className="space-y-4 pb-2">
@@ -248,7 +265,7 @@ export function CentralTenantManagementPage() {
                                             <div className="flex flex-wrap gap-1.5">
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleViewTenant(tenantHost)}
+                                                    onClick={() => handleViewTenant(tenant)}
                                                     disabled={!canViewTenant}
                                                     className="rounded-[var(--border-radius-md)] border px-2 py-1 text-[11px]"
                                                     style={{ borderColor: 'var(--color-border-tertiary)' }}

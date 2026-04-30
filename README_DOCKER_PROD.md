@@ -22,6 +22,9 @@ docker compose -f docker-compose.prod.yml exec app php artisan key:generate --an
 
 # tail nginx logs
 docker compose -f docker-compose.prod.yml logs -f web
+
+# start ngrok tunnel to expose the app publicly (ensure NGROK_AUTHTOKEN is set in .env)
+docker compose -f docker-compose.prod.yml --profile tunnel up -d ngrok
 ```
 
 Secrets management
