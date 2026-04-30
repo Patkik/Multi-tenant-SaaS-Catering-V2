@@ -13,6 +13,7 @@ const links = [
     { to: '/central/revenue-analytics', label: 'Revenue Analytics' },
     { to: '/central/system-health', label: 'System Health' },
     { to: '/central/audit-logs', label: 'Audit Logs' },
+    { to: '/central/support', label: 'Support' },
 ];
 
 const buildTimeVersion = import.meta.env.VITE_APP_VERSION || '0.0.0';

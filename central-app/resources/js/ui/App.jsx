@@ -76,6 +76,7 @@ function CentralRoutes() {
                     <Route path="/central/revenue-analytics" element={<CentralRevenueAnalyticsPage />} />
                     <Route path="/central/system-health" element={<CentralSystemHealthPage />} />
                     <Route path="/central/audit-logs" element={<CentralAuditLogsPage />} />
+                    <Route path="/central/support" element={<TenantSupportPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/central/dashboard" replace />} />
             </Routes>

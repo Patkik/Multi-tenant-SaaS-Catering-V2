@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import { submitCentralSupportRequest } from '../../../api/centralApi';
 import { submitTenantSupportRequest } from '../../../api/tenantApi';
 import { useTenantContext } from '../../../providers/TenantProvider';
 
@@ -19,52 +20,82 @@ const categoryOptions = [
 
 const defaultFormState = {
     category: 'feedback',
-    subject: buildSubject('feedback'),
+    subject: '',
     message: '',
     contact_name: '',
     contact_email: '',
     page_path: '',
 };
 
-function buildSubject(category) {
-    return category === 'bug' ? 'Bug report from tenant workspace' : 'Tenant feedback';
+function buildSubject(category, isCentralMode = false) {
+    if (category === 'bug') {
+        return isCentralMode ? 'Bug report from central platform' : 'Bug report from tenant workspace';
+    }
+
+    return isCentralMode ? 'Central feedback' : 'Tenant feedback';
+}
+
+const supportActionButtonStyle = {
+    borderColor: '#378ADD',
+    backgroundColor: '#E6F1FB',
+    color: '#0C447C',
+};
+
+const supportBadgeStyle = {
+    borderColor: 'var(--color-border-tertiary)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    color: 'var(--color-text-secondary)',
+};
+
+function SupportStatusPill({ label, value }) {
+    return (
+        <div className="rounded-full border px-4 py-2 text-sm font-semibold" style={supportBadgeStyle}>
+            {label}: {value}
+        </div>
+    );
 }
 
 export function TenantSupportPage() {
     const { pathname, search } = useLocation();
-    const { tenantProfile, authUser } = useTenantContext();
+    const { mode, tenantProfile, authUser, centralAuthUser } = useTenantContext();
+    const isCentralMode = mode === 'central';
     const [formState, setFormState] = useState(defaultFormState);
     const [successMessage, setSuccessMessage] = useState('');
     const trimmedSubject = formState.subject.trim();
     const trimmedMessage = formState.message.trim();
     const canSubmit = trimmedSubject.length > 0 && trimmedMessage.length >= 20;
+    const activeUser = isCentralMode ? centralAuthUser : authUser;
+    const supportInboxLabel = isCentralMode ? 'central team inbox' : 'tenant support inbox';
+    const workspaceName = isCentralMode ? 'Central Platform' : tenantProfile?.company_name || 'Tenant Workspace';
+    const workspaceId = isCentralMode ? 'central' : tenantProfile?.tenant_id || tenantProfile?.id || undefined;
 
     useEffect(() => {
         setFormState((previous) => ({
             ...previous,
-            contact_name: previous.contact_name || authUser?.display_name || authUser?.name || '',
-            contact_email: previous.contact_email || authUser?.email || '',
+            contact_name: previous.contact_name || activeUser?.display_name || activeUser?.name || '',
+            contact_email: previous.contact_email || activeUser?.email || '',
             page_path: previous.page_path || `${pathname}${search}`,
             subject: previous.subject || buildSubject(previous.category),
         }));
-    }, [authUser?.display_name, authUser?.email, authUser?.name, pathname, search]);
+    }, [activeUser?.display_name, activeUser?.email, activeUser?.name, pathname, search]);
 
     const supportMutation = useMutation({
-        mutationFn: submitTenantSupportRequest,
+        mutationFn: (payload) => (isCentralMode ? submitCentralSupportRequest(payload) : submitTenantSupportRequest(payload)),
         onSuccess: (result) => {
             setSuccessMessage(String(result?.message ?? 'Your support request has been sent.'));
             setFormState({
                 ...defaultFormState,
                 category: 'feedback',
-                contact_name: authUser?.display_name || authUser?.name || '',
-                contact_email: authUser?.email || '',
+                contact_name: activeUser?.display_name || activeUser?.name || '',
+                contact_email: activeUser?.email || '',
                 page_path: `${pathname}${search}`,
-                subject: buildSubject('feedback'),
+                subject: buildSubject('feedback', isCentralMode),
             });
         },
     });
 
-    const workspaceName = useMemo(() => tenantProfile?.company_name || 'Tenant Workspace', [tenantProfile?.company_name]);
+    const workspaceLabel = useMemo(() => (isCentralMode ? 'Central Platform' : workspaceName), [isCentralMode, workspaceName]);
+    const workspaceModeLabel = isCentralMode ? 'Central Console' : 'Tenant Workspace';
 
     function updateField(field, value) {
         setSuccessMessage('');
@@ -79,7 +110,7 @@ export function TenantSupportPage() {
         setFormState((previous) => ({
             ...previous,
             category,
-            subject: previous.subject.trim() === '' ? buildSubject(category) : previous.subject,
+            subject: previous.subject.trim() === '' ? buildSubject(category, isCentralMode) : previous.subject,
         }));
     }
 
@@ -96,46 +127,54 @@ export function TenantSupportPage() {
             message: trimmedMessage,
             contact_name: formState.contact_name.trim() || undefined,
             contact_email: formState.contact_email.trim() || undefined,
-            workspace_name: workspaceName,
-            workspace_id: tenantProfile?.tenant_id || tenantProfile?.id || undefined,
+            workspace_name: workspaceLabel,
+            workspace_id: workspaceId,
             page_path: formState.page_path.trim() || `${pathname}${search}`,
-            app_version: tenantProfile?.app_version || undefined,
-            user_role: authUser?.role || tenantProfile?.active_role || undefined,
+            app_version: activeUser?.app_version || tenantProfile?.app_version || undefined,
+            user_role:
+                activeUser?.role || activeUser?.roles?.[0] || tenantProfile?.active_role || undefined,
         });
     }
 
     return (
         <div className="space-y-4 pb-2">
             <section className="central-card p-4">
-                <div className="max-w-3xl">
-                    <p className="text-[11px] uppercase tracking-[0.08em]" style={{ color: 'var(--color-text-tertiary)' }}>
-                        Support
-                    </p>
-                    <h1 className="mt-1 text-lg font-semibold">Send feedback or report a bug</h1>
-                    <p className="mt-1 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-                        Use this form to share product feedback, flag issues, or describe something that is not working as expected. Messages must be at least 20 characters long.
-                    </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p className="text-[11px] uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-tertiary)' }}>
+                            Current Mode
+                        </p>
+                        <h1 className="hero-heading text-2xl" style={{ color: 'var(--color-text-primary)' }}>
+                            Support Console
+                        </h1>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <SupportStatusPill label="Workspace" value={workspaceModeLabel} />
+                        <button
+                            type="submit"
+                            form="support-request-form"
+                            disabled={supportMutation.isPending || !canSubmit}
+                            className="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase leading-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                            style={supportActionButtonStyle}
+                        >
+                            {supportMutation.isPending ? 'Sending...' : 'Send Support'}
+                        </button>
+                    </div>
                 </div>
+                <p className="mt-3 max-w-3xl text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                    Use this form to share product feedback, flag issues, or describe something that is not working as expected. Messages must be at least 20 characters long.
+                </p>
             </section>
 
-            <form onSubmit={handleSubmit} className="central-card p-4">
+            <form id="support-request-form" onSubmit={handleSubmit} className="central-card p-4">
                 <div className="grid gap-3 md:grid-cols-2">
                     {categoryOptions.map((option) => {
                         const checked = formState.category === option.value;
 
                         return (
-                            <label
-                                key={option.value}
-                                className={`flex cursor-pointer gap-3 rounded-[var(--border-radius-md)] border px-3 py-3 text-[12px] transition ${checked ? 'border-[var(--primary-color)] bg-white' : ''}`}
-                                style={{ borderColor: checked ? 'var(--primary-color)' : 'var(--color-border-tertiary)' }}
-                            >
-                                <input
-                                    type="radio"
-                                    name="category"
-                                    checked={checked}
-                                    onChange={() => handleCategoryChange(option.value)}
-                                />
-                                <span className="space-y-0.5">
+                <p className="mt-4 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    The message is emailed to the {supportInboxLabel}.
+                </p>
                                     <span className="block font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                                         {option.label}
                                     </span>
@@ -157,7 +196,7 @@ export function TenantSupportPage() {
                             value={formState.subject}
                             onChange={(event) => updateField('subject', event.target.value)}
                             className="central-input h-9 w-full rounded-[var(--border-radius-md)] border px-3 text-[12px]"
-                            placeholder={buildSubject(formState.category)}
+                            placeholder={buildSubject(formState.category, isCentralMode)}
                         />
                     </label>
 
@@ -234,7 +273,7 @@ export function TenantSupportPage() {
                         {supportMutation.isPending ? 'Sending...' : 'Send support request'}
                     </button>
                     <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                        The message is emailed to the tenant support inbox.
+                        The message is emailed to the {supportInboxLabel}.
                     </p>
                 </div>
             </form>
