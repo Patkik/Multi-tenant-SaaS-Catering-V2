@@ -25,6 +25,12 @@ export async function logoutCentralUser() {
     }
 }
 
+export async function submitCentralSupportRequest(payload) {
+    const response = await http.post('/api/central/support', payload);
+
+    return response.data.data;
+}
+
 export async function fetchCentralDashboard() {
     const response = await http.get('/api/central/dashboard');
 

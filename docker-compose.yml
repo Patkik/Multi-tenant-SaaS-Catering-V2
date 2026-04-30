@@ -62,9 +62,9 @@ services:
       - "443:443"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sSf http://127.0.0.1/ > /dev/null || exit 1"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 5
 
   frontend-builder:
