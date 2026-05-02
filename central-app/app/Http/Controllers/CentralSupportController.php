@@ -186,4 +186,27 @@ class CentralSupportController extends Controller
 
         return response()->json(['data' => $stats]);
     }
+
+    /**
+     * Reply to a support ticket
+     */
+    public function reply(Request $request, Support $support): JsonResponse
+    {
+        $validated = $request->validate([
+            'message' => 'required|string',
+        ]);
+
+        if ($support->contact_email) {
+            \Illuminate\Support\Facades\Mail::raw($validated['message'], function ($message) use ($support) {
+                $message->to($support->contact_email)
+                    ->subject('Re: ' . $support->subject);
+            });
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => 'Reply sent successfully.',
+            ]
+        ]);
+    }
 }

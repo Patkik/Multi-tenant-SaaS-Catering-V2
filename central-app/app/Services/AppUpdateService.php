@@ -218,13 +218,22 @@ class AppUpdateService
     {
         $repository = $this->resolveRepository();
 
+        $pullOutput = '';
+        try {
+            $result = Process::path(base_path())->timeout(120)->run('git pull');
+            $pullOutput = $this->summarizeOutput($result->output() . "\n" . $result->errorOutput());
+        } catch (\Throwable $e) {
+            $pullOutput = 'Failed to run git pull: ' . $e->getMessage();
+        }
+
         if ($repository === '') {
             return [
-                'status'          => 'failed',
-                'message'         => 'APP_UPDATE_GITHUB_REPOSITORY is not configured.',
+                'status'           => 'failed',
+                'message'          => 'APP_UPDATE_GITHUB_REPOSITORY is not configured.',
                 'previous_version' => $this->currentVersion(),
-                'current_version' => $this->currentVersion(),
-                'synced_at'       => now()->toIso8601String(),
+                'current_version'  => $this->currentVersion(),
+                'pull_output'      => $pullOutput,
+                'synced_at'        => now()->toIso8601String(),
             ];
         }
 
@@ -240,6 +249,7 @@ class AppUpdateService
                 'message'          => (string) Arr::get($release, 'error', 'Could not reach GitHub API.'),
                 'previous_version' => $this->currentVersion(),
                 'current_version'  => $this->currentVersion(),
+                'pull_output'      => $pullOutput,
                 'synced_at'        => now()->toIso8601String(),
             ];
         }
@@ -254,6 +264,7 @@ class AppUpdateService
                 'message'          => 'GitHub returned an empty tag name.',
                 'previous_version' => $previousVersion,
                 'current_version'  => $previousVersion,
+                'pull_output'      => $pullOutput,
                 'synced_at'        => now()->toIso8601String(),
             ];
         }
@@ -264,6 +275,7 @@ class AppUpdateService
             'previous' => $previousVersion,
             'synced'   => $latestVersion,
             'tag'      => $latestTag,
+            'pull'     => $pullOutput,
         ]);
 
         return [
@@ -274,6 +286,7 @@ class AppUpdateService
             'previous_version' => $previousVersion,
             'current_version'  => $latestVersion,
             'latest_tag'       => $latestTag,
+            'pull_output'      => $pullOutput,
             'synced_at'        => now()->toIso8601String(),
         ];
     }

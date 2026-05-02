@@ -7,7 +7,6 @@ import { useTenantContext } from '../../providers/TenantProvider';
 const links = [
     { to: '/central/dashboard', label: 'Dashboard' },
     { to: '/central/tenants', label: 'Tenants' },
-    { to: '/central/new-tenant', label: 'New Tenant' },
     { to: '/central/plans-pricing', label: 'Plans & Pricing' },
     { to: '/central/user-management', label: 'User Management' },
     { to: '/central/revenue-analytics', label: 'Revenue Analytics' },
@@ -60,7 +59,11 @@ export function CentralWorkspaceLayout() {
         mutationFn: syncCentralAppVersion,
         onSuccess: async (result) => {
             const status = String(result?.status ?? 'info');
-            const message = String(result?.message ?? 'Version sync completed.');
+            let message = String(result?.message ?? 'Version sync completed.');
+            
+            if (result?.pull_output) {
+                message += '\n\nPull Output:\n' + result.pull_output;
+            }
 
             setUpdateFeedback({
                 status,
@@ -353,7 +356,7 @@ export function CentralWorkspaceLayout() {
 
                 {updateFeedback ? (
                     <div
-                        className="border-b px-6 py-2 text-[11px]"
+                        className="border-b px-6 py-2 text-[11px] whitespace-pre-wrap"
                         style={{
                             borderColor: 'var(--color-border-tertiary)',
                             ...(updateFeedbackStyle ?? {}),

@@ -33,6 +33,8 @@ Route::middleware('throttle:120,1')->group(function () {
             ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
         Route::get('/support/tenant-submissions', [CentralSupportController::class, 'tenantSubmissions'])
             ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
+        Route::post('/support/{support}/reply', [CentralSupportController::class, 'reply'])
+            ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
         Route::get('/support/{support}', [CentralSupportController::class, 'show'])
             ->middleware('permission:'.CentralPermissions::DASHBOARD_VIEW);
         Route::get('/support/by-tenant/{tenant}', [CentralSupportController::class, 'byTenant'])

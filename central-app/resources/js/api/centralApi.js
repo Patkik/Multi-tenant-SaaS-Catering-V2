@@ -43,6 +43,12 @@ export async function fetchCentralSupportSubmissions({ source = 'tenant', search
     return response.data.data;
 }
 
+export async function replyCentralSupportSubmission(supportId, payload) {
+    const response = await http.post(`/api/central/support/${supportId}/reply`, payload);
+
+    return response.data.data;
+}
+
 export async function fetchCentralDashboard() {
     const response = await http.get('/api/central/dashboard');
 
