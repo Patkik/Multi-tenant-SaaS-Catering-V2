@@ -27,7 +27,7 @@ class TenantOnboardingTest extends TestCase
         ]);
 
         $response->assertCreated()
-            ->assertJsonPath('data.domain', 'acme.localhost')
+            ->assertJsonPath('data.domain', 'acme.' . config('tenancy.central_domains')[0])
             ->assertJsonPath('data.plan', 'free')
             ->assertJsonPath('data.company_name', 'Acme Catering');
 

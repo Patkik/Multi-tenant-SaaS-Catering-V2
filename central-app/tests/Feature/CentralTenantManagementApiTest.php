@@ -84,7 +84,7 @@ class CentralTenantManagementApiTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.data.0.tenant_id', 'acme-tenant')
             ->assertJsonPath('data.data.0.company_name', 'Acme Catering')
-            ->assertJsonPath('data.data.0.full_domain', 'acme.localhost')
+            ->assertJsonPath('data.data.0.full_domain', 'acme.' . config('tenancy.central_domains')[0])
             ->assertJsonPath('data.data.0.client_access', false);
     }
 
