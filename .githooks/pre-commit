@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+APP_DIR="$REPO_ROOT/central-app"
+
+if [ ! -f "$APP_DIR/package.json" ]; then
+    echo "Skipping app version bump: central-app/package.json was not found."
+    exit 0
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is required to bump the app version before commit."
+    exit 1
+fi
+
+NEW_VERSION="$(cd "$APP_DIR" && npm version patch --no-git-tag-version)"
+
+cd "$REPO_ROOT"
+git add central-app/package.json central-app/package-lock.json
+
+echo "App version bumped to ${NEW_VERSION#v}"

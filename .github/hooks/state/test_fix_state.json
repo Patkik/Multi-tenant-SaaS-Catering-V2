@@ -1,0 +1,65 @@
+{
+  "pendingFailures": [
+    {
+      "commandLabel": "npm run test\\nIt was run in the directory:\\nC:\\\\Users\\\\patri\\\\OneDrive\\\\Desktop\\\\Holy folder\\\\CMS-V2\\\\server\\nIt exited with code: 1\\nIt has the following output:\\n\\n\\n> server@0.1.0 test\\n> vitest run\\n\\n\\n RUN  v4.1.0 C:/Users/patri/OneDr",
+      "commandLabelNormalized": "npm run test\\nit was run in the directory:\\nc:\\\\users\\\\patri\\\\onedrive\\\\desktop\\\\holy folder\\\\cms-v2\\\\server\\nit exited with code: 1\\nit has the following output:\\n\\n\\n> server@0.1.0 test\\n> vitest run\\n\\n\\n run v4.1.0 c:/users/patri/onedr",
+      "firstFailedAt": "2026-04-09T13:45:02+00:00",
+      "lastFailedAt": "2026-04-09T13:46:05+00:00",
+      "fixAttempts": 0,
+      "lastExitCode": 1
+    },
+    {
+      "commandLabel": "npm run test \\n\\n\\n> client@0.0.0 test\\n> vitest run\\n\\n\\n RUN  v4.1.0 C:/Users/patri/OneDrive/Desktop/Holy folder/CMS-V2/client\\n\\n\\n \\u276f src/App.error-routes.test.jsx [queued]\\n \\u276f src/App.routes.test.jsx [queued]\\n \\u276f src/comp",
+      "commandLabelNormalized": "npm run test \\n\\n\\n> client@0.0.0 test\\n> vitest run\\n\\n\\n run v4.1.0 c:/users/patri/onedrive/desktop/holy folder/cms-v2/client\\n\\n\\n \\u276f src/app.error-routes.test.jsx [queued]\\n \\u276f src/app.routes.test.jsx [queued]\\n \\u276f src/comp",
+      "firstFailedAt": "2026-04-09T16:24:17+00:00",
+      "lastFailedAt": "2026-04-09T16:24:17+00:00",
+      "fixAttempts": 0,
+      "lastExitCode": 1
+    },
+    {
+      "commandLabel": "npm run test \\n\\n\\n> client@0.0.0 test\\n> vitest run\\n\\n\\n RUN  v4.1.0 C:/Users/patri/OneDrive/Desktop/Holy folder/CMS-V2/client\\n\\n\\n \\u00e2\\udc9d\\u00af src/App.error-routes.test.jsx [queued]\\n \\u00e2\\udc9d\\u00af src/App.routes.test.jsx [q",
+      "commandLabelNormalized": "npm run test \\n\\n\\n> client@0.0.0 test\\n> vitest run\\n\\n\\n run v4.1.0 c:/users/patri/onedrive/desktop/holy folder/cms-v2/client\\n\\n\\n \\u00e2\\udc9d\\u00af src/app.error-routes.test.jsx [queued]\\n \\u00e2\\udc9d\\u00af src/app.routes.test.jsx [q",
+      "firstFailedAt": "2026-04-09T16:24:18+00:00",
+      "lastFailedAt": "2026-04-09T16:24:18+00:00",
+      "fixAttempts": 0,
+      "lastExitCode": 1
+    },
+    {
+      "commandLabel": "if (Test-Path artisan) { php artisan test tests/Feature/AdminRoleTemplateApiTest.php --stop-on-failure --debug } else { cd central-app; php artisan test tests/Feature/AdminRoleTemplateApiTest.php --stop-on-failure --debug }",
+      "commandLabelNormalized": "if (test-path artisan) { php artisan test tests/feature/adminroletemplateapitest.php --stop-on-failure --debug } else { cd central-app; php artisan test tests/feature/adminroletemplateapitest.php --stop-on-failure --debug }",
+      "firstFailedAt": "2026-04-10T19:05:57+00:00",
+      "lastFailedAt": "2026-04-10T19:05:58+00:00",
+      "fixAttempts": 0,
+      "lastExitCode": 1
+    },
+    {
+      "commandLabel": "if (Test-Path artisan) { php artisan test tests/Feature/AdminTenantProvisioningApiTest.php --stop-on-failure --debug } else { cd central-app; php artisan test tests/Feature/AdminTenantProvisioningApiTest.php --stop-on-failure --debug }",
+      "commandLabelNormalized": "if (test-path artisan) { php artisan test tests/feature/admintenantprovisioningapitest.php --stop-on-failure --debug } else { cd central-app; php artisan test tests/feature/admintenantprovisioningapitest.php --stop-on-failure --debug }",
+      "firstFailedAt": "2026-04-10T19:10:41+00:00",
+      "lastFailedAt": "2026-04-10T19:10:42+00:00",
+      "fixAttempts": 0,
+      "lastExitCode": 1
+    },
+    {
+      "commandLabel": "cd \"c:\\Users\\patri\\OneDrive\\Desktop\\Holy folder\\Multi-tenant SaaS Catering V2\\central-app\" ; php artisan test --filter=\"it lists tenant events with status filter\" --debug",
+      "commandLabelNormalized": "cd \"c:\\users\\patri\\onedrive\\desktop\\holy folder\\multi-tenant saas catering v2\\central-app\" ; php artisan test --filter=\"it lists tenant events with status filter\" --debug",
+      "firstFailedAt": "2026-04-18T16:20:59+00:00",
+      "lastFailedAt": "2026-04-18T16:21:00+00:00",
+      "fixAttempts": 0,
+      "lastExitCode": 1
+    }
+  ],
+  "observedTestActivity": true,
+  "updatedAt": "2026-04-18T16:21:00+00:00",
+  "integrityAnomaly": null,
+  "publicExposureGate": {
+    "pending": false,
+    "pendingContext": null,
+    "passed": false,
+    "lastVerifiedAt": null,
+    "lastAttemptedCommand": "",
+    "lastBlockedAt": null,
+    "evidenceMap": {},
+    "updatedAt": "2026-04-09T12:05:00+00:00"
+  }
+}

@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-caterpro_landlord}
+      MYSQL_USER: ${MYSQL_USER:-caterpro}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    working_dir: /var/www/html
+    volumes:
+      - ./central-app:/var/www/html:cached
+    environment:
+      APP_ENV: production
+      APP_DEBUG: 'false'
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${MYSQL_DATABASE:-caterpro_landlord}
+      DB_USERNAME: ${MYSQL_USER:-caterpro}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+      REDIS_HOST: redis
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: nginx:stable-alpine
+    depends_on:
+      - app
+    volumes:
+      - ./central-app:/var/www/html:ro
+      - ./docker/nginx/caterpro.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sSf http://127.0.0.1/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  frontend-builder:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+    volumes:
+      - frontend_dist:/dist
+    command: ["/bin/sh", "-c", "echo built && sleep infinity"]
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles:
+      - tunnel
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-}
+      NGROK_BASIC_AUTH: ${NGROK_BASIC_AUTH:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ARGS="http web:80"
+        if [ -n "$$NGROK_AUTHTOKEN" ]; then
+          ARGS="$$ARGS --authtoken=$$NGROK_AUTHTOKEN"
+        fi
+        if [ -n "$$NGROK_DOMAIN" ]; then
+          ARGS="$$ARGS --domain=$$NGROK_DOMAIN"
+        fi
+        if [ -n "$$NGROK_BASIC_AUTH" ]; then
+          ARGS="$$ARGS --basic-auth=$$NGROK_BASIC_AUTH"
+        fi
+        echo "Starting ngrok tunnel..."
+        exec ngrok $$ARGS
+    ports:
+      - "4040:4040"
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  redis_data:
+  frontend_dist:

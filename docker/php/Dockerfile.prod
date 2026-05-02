@@ -1,0 +1,39 @@
+# Multi-stage Dockerfile: builds frontend then app
+
+# 1) Frontend build stage
+FROM node:20-alpine AS frontend-builder
+WORKDIR /build
+COPY central-app/package*.json ./central-app/
+RUN cd central-app && npm ci --legacy-peer-deps
+COPY central-app ./central-app
+RUN cd central-app && npm run build
+
+# 2) PHP application stage
+FROM php:8.4-fpm
+
+# System packages and PHP extensions
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    git unzip libzip-dev libicu-dev libpng-dev libonig-dev libxml2-dev libcurl4-openssl-dev zlib1g-dev libpq-dev curl ca-certificates \
+  && docker-php-ext-install pdo pdo_mysql mbstring zip exif pcntl bcmath intl sockets xml \
+  && pecl install redis && docker-php-ext-enable redis \
+  && curl -s https://getcomposer.org/installer 2>/dev/null | php -- --install-dir=/usr/local/bin --filename=composer || echo "Composer install skipped (offline mode)" \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /var/www/html
+
+# Copy composer files and install
+COPY central-app/composer.json central-app/composer.lock ./
+RUN composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-scripts --no-progress
+
+# Copy app source
+COPY central-app/. .
+
+# Copy built frontend into public/ (from builder)
+COPY --from=frontend-builder /build/central-app/public/build /var/www/html/public/build
+
+# Permissions
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache || true
+
+EXPOSE 9000
+CMD ["php-fpm"]

@@ -56,6 +56,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | This value is used in API metadata and the central dashboard badge.
+    | Keeping it in package.json allows commit hooks to bump one source of
+    | truth while APP_VERSION can still override it when needed.
+    |
+    */
+
+    'version' => env('APP_VERSION', (static function (): string {
+        $packageJsonPath = base_path('package.json');
+
+        if (! is_file($packageJsonPath)) {
+            return '0.0.0';
+        }
+
+        $packageJson = json_decode((string) file_get_contents($packageJsonPath), true);
+
+        if (! is_array($packageJson) || ! isset($packageJson['version'])) {
+            return '0.0.0';
+        }
+
+        return (string) $packageJson['version'];
+    })()),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    secrets:
+      - db_root_password
+      - db_password
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-caterpro_landlord}
+      MYSQL_USER: ${MYSQL_USER:-caterpro}
+      MYSQL_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server","--appendonly","yes","--appendfsync","everysec","--maxmemory","512mb","--maxmemory-policy","allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+      start_period: 20s
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile.prod
+    working_dir: /var/www/html
+    env_file: .env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: 'false'
+      DB_HOST: db
+      DB_PORT: 3306
+      REDIS_HOST: redis
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+    secrets:
+      - db_password
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./central-app:/var/www/html:ro
+      - uploads:/var/www/html/storage/app
+    healthcheck:
+      test: ["CMD-SHELL", "php -v >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    user: "www-data"
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  web:
+    image: php:8.4-apache
+    env_file: .env
+    environment:
+      CACHE_DRIVER: file
+      SESSION_DRIVER: file
+      QUEUE_CONNECTION: sync
+    depends_on:
+      - app
+    volumes:
+      - ./central-app:/var/www/html
+      - ./docker/apache/000-default.conf:/etc/apache2/sites-available/000-default.conf:ro
+      - uploads:/var/www/html/storage/app
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "apache2ctl -t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["bash", "-lc", "a2enmod rewrite >/dev/null && apache2-foreground"]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  worker:
+    image: alpine:3.18
+    command: ["/bin/sh","-c","while true; do sleep 3600; done"]
+    depends_on:
+      - app
+      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -q php || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles:
+      - tunnel
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-}
+      NGROK_BASIC_AUTH: ${NGROK_BASIC_AUTH:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ARGS="http web:80"
+        if [ -n "$$NGROK_AUTHTOKEN" ]; then
+          ARGS="$$ARGS --authtoken=$$NGROK_AUTHTOKEN"
+        fi
+        if [ -n "$$NGROK_DOMAIN" ]; then
+          ARGS="$$ARGS --domain=$$NGROK_DOMAIN"
+        fi
+        if [ -n "$$NGROK_BASIC_AUTH" ]; then
+          ARGS="$$ARGS --basic-auth=$$NGROK_BASIC_AUTH"
+        fi
+        echo "Starting ngrok tunnel..."
+        exec ngrok $$ARGS
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  redis_data:
+  uploads:
+
+secrets:
+  db_root_password:
+    file: docker/secrets/db_root_password.txt
+  db_password:
+    file: docker/secrets/db_password.txt
+  jwt_secret:
+    file: docker/secrets/jwt_secret.txt
